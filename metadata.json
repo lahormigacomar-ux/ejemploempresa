@@ -1,0 +1,7 @@
+{
+  "name": "ConcreteraERP Pro",
+  "description": "Sistema ERP integral para plantas elaboradoras de hormigón, áridos y premoldeados con costos reales, logística, flota, laboratorio y portal de clientes.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
+
