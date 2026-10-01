@@ -134,11 +134,12 @@ export class FuelService {
       }
     }
 
-    // F. Detección Contextual de Posible Duplicado de Ticket / Comprobante Manual
+    // F. Detección Contextual de Posible Duplicado de Ticket / Comprobante Manual (Sin mutación en prevalidación)
+    let duplicateComprobanteRef: AbastecimientoCombustible | null = null;
     const comprobanteToCheck = params.numeroComprobante || params.numeroTicket;
     if (comprobanteToCheck) {
       const allExisting = await fuelRepository.getAllSupplies({ empresaId });
-      const duplicateComprobante = allExisting.find(s => {
+      const found = allExisting.find(s => {
         if (s.estado === 'ANULADO') return false;
         const sameDoc = s.numeroComprobante === comprobanteToCheck || s.numeroTicket === comprobanteToCheck;
         if (!sameDoc) return false;
@@ -151,21 +152,8 @@ export class FuelService {
         }
         return true;
       });
-
-      if (duplicateComprobante) {
-        await fuelPerformanceRepository.addAlert({
-          id: `alt-dup-comp-${Date.now()}`,
-          empresaId,
-          tipo: 'COMPROBANTE_DUPLICADO',
-          severidad: 'ADVERTENCIA',
-          titulo: `Posible Comprobante Duplicado: ${comprobanteToCheck}`,
-          descripcion: `Se detectó el comprobante ${comprobanteToCheck} previamente registrado en ${params.origenAbastecimiento} (Carga ref: ${duplicateComprobante.id}).`,
-          origenModulo: 'COMBUSTIBLE_ABASTECIMIENTO',
-          origenId: duplicateComprobante.id,
-          equipoId: equipo.id,
-          fecha: now,
-          resuelta: false
-        });
+      if (found) {
+        duplicateComprobanteRef = found;
       }
     }
 
@@ -277,7 +265,24 @@ export class FuelService {
 
     await fuelRepository.saveSupply(supply);
 
-    // 5. Generar alerta si el consumo arrojó desvío CRITICO o ADVERTENCIA
+    // 5. Generar alerta si se detectó un comprobante duplicado (apuntando al NUEVO abastecimiento como origenId)
+    if (duplicateComprobanteRef) {
+      await fuelPerformanceRepository.addAlert({
+        id: `alt-dup-comp-${supply.id}`,
+        empresaId,
+        tipo: 'COMPROBANTE_DUPLICADO',
+        severidad: 'ADVERTENCIA',
+        titulo: `Posible Comprobante Duplicado: ${comprobanteToCheck}`,
+        descripcion: `El comprobante ${comprobanteToCheck} coincide con el abastecimiento previo ${duplicateComprobanteRef.numeroVale || duplicateComprobanteRef.id}.`,
+        origenModulo: 'COMBUSTIBLE_ABASTECIMIENTO',
+        origenId: supply.id,
+        equipoId: equipo.id,
+        fecha: now,
+        resuelta: false
+      });
+    }
+
+    // 6. Generar alerta si el consumo arrojó desvío CRITICO o ADVERTENCIA
     if (evalResult.nivelDesvio === 'CRITICO' || evalResult.nivelDesvio === 'ADVERTENCIA') {
       await fuelPerformanceRepository.addAlert({
         id: `alt-perf-${supply.id}`,
@@ -294,7 +299,7 @@ export class FuelService {
       });
     }
 
-    // 6. Auditoría
+    // 7. Auditoría
     await auditRepository.recordAction(
       'comb_abastecimientos',
       supply.id,

@@ -565,8 +565,8 @@ describe('MÓDULO 4 — COMBUSTIBLE Y RENDIMIENTO', () => {
     expect(res2.supply.rendimientoCalculado).toBe(35.0); // 140 / 4 = 35 L/100km
   });
 
-  it('Caso AC: Mismo comprobante en misma estación con eventId distinto genera alerta de posible duplicado', async () => {
-    await fuelService.registerSupply({
+  it('Caso AC: Mismo comprobante en misma estación con eventId distinto genera alerta apuntando al nuevo abastecimiento', async () => {
+    const res1 = await fuelService.registerSupply({
       equipoId: 'eq-mix-14',
       tipoCombustibleId: 'fuel-diesel-500',
       origenAbastecimiento: 'ESTACION_SERVICIO',
@@ -579,7 +579,7 @@ describe('MÓDULO 4 — COMBUSTIBLE Y RENDIMIENTO', () => {
     });
 
     // Segunda carga manual con diferente eventId pero mismo comprobante y contexto
-    await fuelService.registerSupply({
+    const res2 = await fuelService.registerSupply({
       equipoId: 'eq-mix-14',
       tipoCombustibleId: 'fuel-diesel-500',
       origenAbastecimiento: 'ESTACION_SERVICIO',
@@ -594,7 +594,43 @@ describe('MÓDULO 4 — COMBUSTIBLE Y RENDIMIENTO', () => {
     const alerts = await fuelPerformanceRepository.getAlerts('emp-1', false);
     const dupAlert = alerts.find(a => a.tipo === 'COMPROBANTE_DUPLICADO');
     expect(dupAlert).toBeDefined();
+    // La alerta debe originarse en la NUEVA carga confirmada
+    expect(dupAlert?.origenId).toBe(res2.supply.id);
     expect(dupAlert?.descripcion).toContain('TKT-YPF-778899');
+    expect(dupAlert?.descripcion).toContain(res1.supply.numeroVale || res1.supply.id);
+  });
+
+  it('Caso AF: Prevalidación no genera efectos secundarios: si la carga falla, NO se crea alerta de comprobante duplicado', async () => {
+    // 1. Carga inicial válida
+    await fuelService.registerSupply({
+      equipoId: 'eq-mix-14',
+      tipoCombustibleId: 'fuel-diesel-500',
+      origenAbastecimiento: 'ESTACION_SERVICIO',
+      estacionServicioNombre: 'YPF Panamericana KM 38',
+      litros: 50,
+      precioUnitario: 1200,
+      numeroTicket: 'TKT-YPF-55555',
+      odometroKm: 42300
+    });
+
+    // 2. Intento de carga con MISMO ticket pero que falla en prevalidación (odómetro regresivo)
+    await expect(
+      fuelService.registerSupply({
+        equipoId: 'eq-mix-14',
+        tipoCombustibleId: 'fuel-diesel-500',
+        origenAbastecimiento: 'ESTACION_SERVICIO',
+        estacionServicioNombre: 'YPF Panamericana KM 38',
+        litros: 50,
+        precioUnitario: 1200,
+        numeroTicket: 'TKT-YPF-55555',
+        odometroKm: 40000 // Regresivo inválido (< 42300)
+      })
+    ).rejects.toThrow(/Lectura regresiva rechazada/);
+
+    // 3. Verificar que NO se generó ninguna alerta en el repositorio
+    const alerts = await fuelPerformanceRepository.getAlerts('emp-1', false);
+    const dupAlert = alerts.find(a => a.tipo === 'COMPROBANTE_DUPLICADO');
+    expect(dupAlert).toBeUndefined();
   });
 
   it('Caso AD: Idempotencia técnica por eventId duplicado devuelve el registro existente sin re-ejecución', async () => {
