@@ -18,6 +18,7 @@ import { fleetEventHandler } from './fleetEventHandler';
 import { fleetService } from './fleetService';
 import { hrEventHandler } from './hrEventHandler';
 import { hrDomainService } from './hrDomainService';
+import { hrAvailabilityService } from './hrAvailabilityService';
 
 export class MaintenanceService {
   async createWorkOrder(params: {
@@ -147,6 +148,39 @@ export class MaintenanceService {
     return tarea;
   }
 
+  async updateTaskStatus(
+    otId: string,
+    tareaId: string,
+    nuevoEstado: 'PENDIENTE' | 'EN_PROCESO' | 'COMPLETADA' | 'CANCELADA',
+    horasReales?: number
+  ): Promise<TareaOrdenTrabajo> {
+    const ot = await maintenanceRepository.getWorkOrderById(otId);
+    if (!ot) throw new Error(`OT ${otId} no encontrada`);
+    if (ot.estado === 'CERRADA') {
+      throw new Error('No se pueden modificar tareas de una OT cerrada.');
+    }
+
+    const tarea = ot.tareas.find(t => t.id === tareaId);
+    if (!tarea) throw new Error(`Tarea ${tareaId} no encontrada en la OT ${ot.numeroOT}`);
+
+    const estadoAnterior = tarea.estado;
+    tarea.estado = nuevoEstado;
+    if (horasReales !== undefined) tarea.horasReales = horasReales;
+
+    await maintenanceRepository.saveWorkOrder(ot);
+
+    await auditRepository.recordAction(
+      'mant_ot_tareas',
+      tarea.id,
+      'CAMBIO_ESTADO_TAREA',
+      { estado: estadoAnterior },
+      { estado: nuevoEstado, horasReales: tarea.horasReales },
+      `Actualización de estado en tarea "${tarea.descripcion}" a ${nuevoEstado}`
+    );
+
+    return tarea;
+  }
+
   async addLabor(
     otId: string,
     empleadoId: string,
@@ -161,17 +195,20 @@ export class MaintenanceService {
 
     const empleado = await employeeRepository.getById(empleadoId);
     if (!empleado) throw new Error(`Empleado con ID ${empleadoId} no existe`);
-    if (empleado.estado !== 'ACTIVO') {
-      throw new Error(`El empleado ${empleado.apellido}, ${empleado.nombre} se encuentra inactivo (${empleado.estado})`);
+
+    // 1. Validar disponibilidad real en RRHH (licencias médicas, vacaciones, suspensiones, etc.)
+    const avail = await hrAvailabilityService.canAssignEmployee(empleadoId, fecha);
+    if (!avail.disponible) {
+      throw new Error(`El mecánico ${empleado.apellido}, ${empleado.nombre} no se encuentra disponible: ${avail.motivo}`);
     }
 
-    // Validar rol de taller en RRHH
+    // 2. Validar rol de taller en RRHH
     const isMechanic = empleado.roles.includes('mecanico') || empleado.roles.includes('ayudante_mecanico');
     if (!isMechanic) {
       throw new Error(`El empleado ${empleado.apellido}, ${empleado.nombre} no posee el rol de mecánico/taller`);
     }
 
-    // Costo horario obtenido directamente del motor salarial de RRHH (sin constantes hardcodeadas)
+    // 3. Costo horario obtenido directamente del motor salarial y previsional de RRHH
     const costoHorarioSnapshot = await hrDomainService.getEmployeeHourlyCost(empleadoId, fecha);
     const costoTotalLaboral = Math.round(costoHorarioSnapshot * horas);
 
@@ -314,6 +351,7 @@ export class MaintenanceService {
     if (!ot) throw new Error(`OT ${otId} no encontrada`);
     if (ot.estado === 'CERRADA') throw new Error('La OT ya se encuentra cerrada.');
 
+    // 1. FASE DE VALIDACIÓN PREVIA ESTRICTA (Previene mutaciones parciales de contadores o estados)
     if (!params.diagnostico || params.diagnostico.trim() === '') {
       throw new Error('El diagnóstico técnico es obligatorio para cerrar la OT.');
     }
@@ -330,7 +368,27 @@ export class MaintenanceService {
       );
     }
 
-    // Actualizar contadores en Flota (Fuente única de verdad de Flota)
+    const equipo = await equipmentRepository.getById(ot.equipoId);
+    if (!equipo) throw new Error(`Equipo ${ot.equipoId} no encontrado`);
+
+    // Validar contadores antes de aplicar cualquier mutación en el equipo
+    if (params.odometroCierreKm !== undefined) {
+      if (params.odometroCierreKm < equipo.odometroKmActual) {
+        throw new Error(
+          `Lectura regresiva rechazada: El odómetro de cierre (${params.odometroCierreKm} km) no puede ser menor al actual (${equipo.odometroKmActual} km)`
+        );
+      }
+    }
+    if (params.horometroCierreHs !== undefined) {
+      if (params.horometroCierreHs < equipo.horometroHsActual) {
+        throw new Error(
+          `Lectura regresiva rechazada: El horómetro de cierre (${params.horometroCierreHs} hs) no puede ser menor al actual (${equipo.horometroHsActual} hs)`
+        );
+      }
+    }
+
+    // 2. FASE DE EJECUCIÓN ATÓMICA
+    // Nota arquitectónica: En PostgreSQL/Supabase físico, este bloque se ejecutará dentro de una transacción (BEGIN ... COMMIT).
     if (params.odometroCierreKm !== undefined) {
       await fleetService.registerOdometerReading(ot.equipoId, params.odometroCierreKm, 'TALLER', ot.id);
       ot.odometroCierreKm = params.odometroCierreKm;
@@ -358,7 +416,7 @@ export class MaintenanceService {
       ot.horasParadaEquipo = 0;
     }
 
-    // Recalcular y persistir
+    // Recalcular costos y persistir
     await maintenanceRepository.saveWorkOrder(ot);
 
     // Si bloqueó el equipo, liberarlo a DISPONIBLE mediante evento

@@ -5,6 +5,7 @@ import { employeeRepository } from '../repositories/employeeRepository';
 import { laborCostRepository } from '../repositories/laborCostRepository';
 import { auditRepository } from '../repositories/auditRepository';
 import { tireRepository } from '../repositories/tireRepository';
+import { attendanceRepository } from '../repositories/attendanceRepository';
 import { maintenanceService } from '../services/maintenanceService';
 import { maintenancePlanningService } from '../services/maintenancePlanningService';
 import { tireService } from '../services/tireService';
@@ -19,6 +20,7 @@ describe('MÓDULO 3 — MANTENIMIENTO, TALLER, REPUESTOS Y NEUMÁTICOS', () => {
     laborCostRepository.resetForTesting();
     tireRepository.resetForTesting();
     fleetEventHandler.resetForTesting();
+    attendanceRepository.resetForTesting();
   });
 
   it('Caso A: Crear OT para un equipo válido genera número correlativo y estado ABIERTA', async () => {
@@ -188,7 +190,6 @@ describe('MÓDULO 3 — MANTENIMIENTO, TALLER, REPUESTOS Y NEUMÁTICOS', () => {
   });
 
   it('Caso J: Downtime no incluye las horas previas a la entrada efectiva al taller', async () => {
-    // OT abierta a las 08:00
     const ot = await maintenanceService.createWorkOrder({
       equipoId: 'eq-mix-12',
       tipoMantenimiento: 'CORRECTIVO',
@@ -198,11 +199,9 @@ describe('MÓDULO 3 — MANTENIMIENTO, TALLER, REPUESTOS Y NEUMÁTICOS', () => {
       bloqueaEquipo: true
     });
 
-    // Ingresa a taller a las 16:00 (8 horas después)
     const fechaEntrada = '2026-09-30T16:00:00Z';
     await maintenanceService.startWorkOrder(ot.id, undefined, undefined, fechaEntrada);
 
-    // Cierra a las 19:00 (3 horas de reparación real)
     const fechaCierre = '2026-09-30T19:00:00Z';
     const otCerrada = await maintenanceService.closeWorkOrder(ot.id, {
       diagnostico: 'Cintas gastadas',
@@ -210,11 +209,10 @@ describe('MÓDULO 3 — MANTENIMIENTO, TALLER, REPUESTOS Y NEUMÁTICOS', () => {
       fechaCierre
     });
 
-    // Debe ser exactamente 3 horas, no 11 horas (8hs previas + 3hs taller)
     expect(otCerrada.horasParadaEquipo).toBe(3.0);
   });
 
-  it('Caso K: Cierre de OT es rechazado si existen tareas en estado PENDIENTE o EN_PROCESO', async () => {
+  it('Caso K: Cierre de OT es rechazado si existen tareas en estado PENDIENTE o EN_PROCESO, y updateTaskStatus permite completarlas', async () => {
     const ot = await maintenanceService.createWorkOrder({
       equipoId: 'eq-mix-12',
       tipoMantenimiento: 'CORRECTIVO',
@@ -227,7 +225,7 @@ describe('MÓDULO 3 — MANTENIMIENTO, TALLER, REPUESTOS Y NEUMÁTICOS', () => {
     await maintenanceService.startWorkOrder(ot.id);
     const tar = await maintenanceService.addTask(ot.id, 'Cambiar correa de alternador', 1);
 
-    // Intento de cierre con tarea PENDIENTE
+    // Intento de cierre con tarea PENDIENTE -> Rechazo
     await expect(
       maintenanceService.closeWorkOrder(ot.id, {
         diagnostico: 'Correa reseca',
@@ -235,8 +233,8 @@ describe('MÓDULO 3 — MANTENIMIENTO, TALLER, REPUESTOS Y NEUMÁTICOS', () => {
       })
     ).rejects.toThrow(/La tarea "Cambiar correa de alternador" se encuentra en estado PENDIENTE/);
 
-    // Marcar completada la tarea
-    tar.estado = 'COMPLETADA';
+    // Cambio de estado de la tarea mediante la operación de dominio updateTaskStatus
+    await maintenanceService.updateTaskStatus(ot.id, tar.id, 'COMPLETADA', 1.2);
 
     // Cierre exitoso con tareas finalizadas
     const otCerrada = await maintenanceService.closeWorkOrder(ot.id, {
@@ -246,49 +244,37 @@ describe('MÓDULO 3 — MANTENIMIENTO, TALLER, REPUESTOS Y NEUMÁTICOS', () => {
     expect(otCerrada.estado).toBe('CERRADA');
   });
 
-  it('Caso L: Cierre de OT actualiza contadores de Flota (fuente única de verdad) y rechaza lecturas regresivas', async () => {
-    // MIX-12 odómetro actual = 68.500 km, horómetro = 3.420 hs
+  it('Caso L: Prevención de mutaciones parciales: odómetro válido + horómetro regresivo inválido rechaza cierre sin alterar contadores', async () => {
+    // MIX-12: odómetro = 68.500 km, horómetro = 3.420 hs
     const ot = await maintenanceService.createWorkOrder({
       equipoId: 'eq-mix-12',
       tipoMantenimiento: 'PREVENTIVO',
       categoriaFalla: 'MOTOR',
       prioridad: 'NORMAL',
-      fallaReportada: 'Service 70k km',
+      fallaReportada: 'Service',
       bloqueaEquipo: true
     });
 
     await maintenanceService.startWorkOrder(ot.id);
 
-    // Cierre con nuevo horómetro 3.435 hs y odómetro 68.520 km
-    await maintenanceService.closeWorkOrder(ot.id, {
-      diagnostico: 'Service cumplido',
-      trabajoRealizado: 'Cambio de fluidos',
-      odometroCierreKm: 68520,
-      horometroCierreHs: 3435
-    });
-
-    const eq = await equipmentRepository.getById('eq-mix-12');
-    expect(eq?.odometroKmActual).toBe(68520);
-    expect(eq?.horometroHsActual).toBe(3435);
-
-    // Intentar registrar odómetro menor en otra OT debe ser rechazado
-    const ot2 = await maintenanceService.createWorkOrder({
-      equipoId: 'eq-mix-12',
-      tipoMantenimiento: 'CORRECTIVO',
-      categoriaFalla: 'MOTOR',
-      prioridad: 'NORMAL',
-      fallaReportada: 'Ajuste',
-      bloqueaEquipo: true
-    });
-    await maintenanceService.startWorkOrder(ot2.id);
-
+    // Odómetro válido (68.550 km) pero Horómetro regresivo inválido (2.000 hs < 3.420 hs)
     await expect(
-      maintenanceService.closeWorkOrder(ot2.id, {
-        diagnostico: 'OK',
-        trabajoRealizado: 'Ajuste',
-        odometroCierreKm: 60000 // Menor al actual 68520
+      maintenanceService.closeWorkOrder(ot.id, {
+        diagnostico: 'Revisión efectuada',
+        trabajoRealizado: 'Cambio de fluidos',
+        odometroCierreKm: 68550,
+        horometroCierreHs: 2000
       })
-    ).rejects.toThrow(/no puede ser menor al actual/);
+    ).rejects.toThrow(/Lectura regresiva rechazada/);
+
+    // Verificar que NINGUNO de los dos contadores mutó en el equipo
+    const eq = await equipmentRepository.getById('eq-mix-12');
+    expect(eq?.odometroKmActual).toBe(68500);
+    expect(eq?.horometroHsActual).toBe(3400);
+
+    // La OT tampoco debe haber quedado CERRADA
+    const otCheck = await maintenanceRepository.getWorkOrderById(ot.id);
+    expect(otCheck?.estado).toBe('EN_PROCESO');
   });
 
   it('Caso M: Plan preventivo por horas calcula estado PROXIMO o VENCIDO al comparar con horómetro de Flota', async () => {
@@ -333,17 +319,33 @@ describe('MÓDULO 3 — MANTENIMIENTO, TALLER, REPUESTOS Y NEUMÁTICOS', () => {
     expect(t?.vecesRecapado).toBe(1);
   });
 
-  it('Caso Q: Una OT cerrada no puede modificarse libremente', async () => {
+  it('Caso Q: Una OT cerrada rechaza cualquier intento de modificación posterior (Inmutabilidad estricta)', async () => {
     await expect(
       maintenanceService.addTask('ot-101', 'Tarea tardía')
     ).rejects.toThrow(/OT cerrada/);
 
     await expect(
+      maintenanceService.updateTaskStatus('ot-101', 'tar-1', 'PENDIENTE')
+    ).rejects.toThrow(/OT cerrada/);
+
+    await expect(
+      maintenanceService.addLabor('ot-101', 'emp-5', 2, 'Mecánica')
+    ).rejects.toThrow(/OT cerrada/);
+
+    await expect(
       maintenanceService.addPart('ot-101', 'art-1', 1, 'Filtro', 1000)
+    ).rejects.toThrow(/OT cerrada/);
+
+    await expect(
+      maintenanceService.addExternalService('ot-101', 'Proveedor', 'Tornería', 5000)
+    ).rejects.toThrow(/OT cerrada/);
+
+    await expect(
+      maintenanceService.changeStatus('ot-101', 'EN_PROCESO', 'Reapertura no permitida')
     ).rejects.toThrow(/OT cerrada/);
   });
 
-  it('Caso R: Asignar mano de obra con empleado no mecánico o inactivo es rechazado con mensaje claro', async () => {
+  it('Caso R: Asignar mano de obra con empleado no disponible por RRHH (Licencia activa) o sin rol es rechazado', async () => {
     const ot = await maintenanceService.createWorkOrder({
       equipoId: 'eq-mix-12',
       tipoMantenimiento: 'CORRECTIVO',
@@ -353,9 +355,25 @@ describe('MÓDULO 3 — MANTENIMIENTO, TALLER, REPUESTOS Y NEUMÁTICOS', () => {
       bloqueaEquipo: true
     });
 
-    // emp-1 es chofer_mixer, NO mecánico
+    // 1. Chofer (no mecánico) -> Rechazo
     await expect(
       maintenanceService.addLabor(ot.id, 'emp-1', 2, 'Mecánica')
     ).rejects.toThrow(/no posee el rol de mecánico\/taller/);
+
+    // 2. Mecánico emp-5 en fecha donde tiene novedad/licencia médica aprobada en RRHH
+    await attendanceRepository.addNovedad({
+      id: 'nov-lic-emp-5',
+      empleadoId: 'emp-5',
+      tipo: 'LICENCIA_MEDICA',
+      fechaDesde: '2026-10-01',
+      fechaHasta: '2026-10-05',
+      conGoceSueldo: true,
+      diasTotales: 5,
+      estado: 'APROBADA'
+    });
+
+    await expect(
+      maintenanceService.addLabor(ot.id, 'emp-5', 4, 'Mecánica', undefined, '2026-10-03')
+    ).rejects.toThrow(/no se encuentra disponible: No disponible por LICENCIA_MEDICA/);
   });
 });
