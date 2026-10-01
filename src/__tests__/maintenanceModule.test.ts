@@ -257,7 +257,7 @@ describe('MÓDULO 3 — MANTENIMIENTO, TALLER, REPUESTOS Y NEUMÁTICOS', () => {
 
     await maintenanceService.startWorkOrder(ot.id);
 
-    // Odómetro válido (68.550 km) pero Horómetro regresivo inválido (2.000 hs < 3.420 hs)
+    // Odómetro válido (68.550 km) pero Horómetro regresivo inválido (2.000 hs < 3.400 hs)
     await expect(
       maintenanceService.closeWorkOrder(ot.id, {
         diagnostico: 'Revisión efectuada',
