@@ -80,6 +80,63 @@ export class TankService {
     return income;
   }
 
+  /**
+   * Anulación formal de un ingreso de combustible a tanque (por anulación de recepción de compras)
+   * Genera un movimiento inverso de egreso sin borrar el registro histórico.
+   */
+  async cancelIncome(
+    incomeId: string,
+    motivo: string,
+    usuarioId: string = 'admin'
+  ): Promise<MovimientoTanqueCombustible> {
+    const income = await tankRepository.getTankIncomeById(incomeId);
+    if (!income) throw new Error(`Ingreso a tanque ${incomeId} no encontrado`);
+
+    const tank = await tankRepository.getTankById(income.tanqueId);
+    if (!tank) throw new Error(`Tanque ${income.tanqueId} no encontrado`);
+
+    // Verificar si ya fue revertido
+    const allMovs = await tankRepository.getTankMovements(tank.id);
+    const alreadyReverted = allMovs.some(
+      m => m.origenModulo === 'ANULACION_RECEPCION_COMPRA' && m.origenId === income.id
+    );
+    if (alreadyReverted) {
+      throw new Error(`El ingreso de combustible ${incomeId} ya fue revertido previamente`);
+    }
+
+    const now = new Date().toISOString();
+    const movReversion: MovimientoTanqueCombustible = {
+      id: `mov-rev-ing-${Date.now()}-${Math.random().toString(36).substring(2, 5)}`,
+      empresaId: income.empresaId,
+      tanqueId: tank.id,
+      fechaHora: now,
+      tipoMovimiento: 'EGRESO',
+      litros: income.litros,
+      origenModulo: 'ANULACION_RECEPCION_COMPRA',
+      origenId: income.id,
+      costoUnitarioSnapshot: income.precioUnitario,
+      costoTotalSnapshot: income.costoTotal,
+      stockAnteriorLitros: tank.stockActualLitros,
+      stockPosteriorLitros: tank.stockActualLitros - income.litros,
+      usuarioId,
+      observaciones: `Reversión formal por anulación de recepción de compra: ${motivo}`
+    };
+
+    await tankRepository.addTankMovement(movReversion);
+
+    await auditRepository.recordAction(
+      'comb_tanques',
+      tank.id,
+      'REVERSION_INGRESO_COMBUSTIBLE',
+      { stockAnterior: movReversion.stockAnteriorLitros, ingresoId: income.id },
+      { stockPosterior: movReversion.stockPosteriorLitros, litrosRevertidos: income.litros, motivo },
+      `Reversión formal de ingreso de ${income.litros} L en tanque ${tank.codigo}: ${motivo}`,
+      usuarioId
+    );
+
+    return movReversion;
+  }
+
   async registerMeasurement(params: {
     tanqueId: string;
     litrosMedidos: number;

@@ -44,8 +44,8 @@ class PurchaseRequestRepository {
             cantidad: 60,
             unidadMedida: 'TN',
             centroCostoId: 'cc-hormigon',
-            cantidadOrdenada: 60,
-            cantidadPendiente: 0
+            cantidadOrdenada: 0,
+            cantidadPendiente: 60
           }
         ],
         createdAt: '2026-09-25T09:00:00Z',

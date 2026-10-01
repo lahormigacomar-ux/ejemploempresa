@@ -25,6 +25,7 @@ export class PurchaseRequestService {
     items: {
       tipo: TipoItemCompra;
       articuloId?: string;
+      tipoCombustibleId?: string;
       descripcion: string;
       cantidad: number;
       unidadMedida: string;
@@ -72,6 +73,7 @@ export class PurchaseRequestService {
       solicitudId: id,
       tipo: it.tipo,
       articuloId: it.articuloId,
+      tipoCombustibleId: it.tipoCombustibleId,
       descripcionSnapshot: it.descripcion.trim(),
       cantidad: it.cantidad,
       unidadMedida: it.unidadMedida || 'UNIDAD',

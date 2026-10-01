@@ -44,6 +44,10 @@ export class PurchaseReceiptService {
     const ord = await purchaseOrderRepository.getById(params.ordenCompraId);
     if (!ord) throw new Error(`Orden de compra ${params.ordenCompraId} no encontrada`);
 
+    if (ord.empresaId !== empresaId) {
+      throw new Error(`Aislamiento multiempresa violado: La Orden de Compra ${ord.numero} pertenece a la empresa ${ord.empresaId} y no a ${empresaId}`);
+    }
+
     if (ord.estado === 'CANCELADA' || ord.estado === 'BORRADOR' || ord.estado === 'CERRADA') {
       throw new Error(`No se puede recibir mercadería de una Orden de Compra en estado ${ord.estado}`);
     }
@@ -87,15 +91,44 @@ export class PurchaseReceiptService {
       }
     }
 
-    // Si tiene tanqueId, prevalidar que el tanque exista y esté ACTIVO
+    // Validación estricta y atómica de tanque y combustible (sin fallbacks inventados)
+    let tankObj = null;
+    let fuelItemsToProcess: { ocItem: typeof ord.items[0]; it: typeof params.items[0] }[] = [];
+
     if (params.tanqueId) {
-      const tank = await tankRepository.getTankById(params.tanqueId);
-      if (!tank) throw new Error(`Tanque ${params.tanqueId} no encontrado`);
-      if (tank.estado !== 'ACTIVO') throw new Error(`El tanque ${tank.codigo} no está ACTIVO`);
+      tankObj = await tankRepository.getTankById(params.tanqueId);
+      if (!tankObj) throw new Error(`Tanque ${params.tanqueId} no encontrado`);
+      if (tankObj.empresaId !== empresaId) {
+        throw new Error(`Aislamiento multiempresa violado: El tanque ${tankObj.codigo} pertenece a la empresa ${tankObj.empresaId} y no a ${empresaId}`);
+      }
+      if (tankObj.estado !== 'ACTIVO') throw new Error(`El tanque ${tankObj.codigo} no está ACTIVO`);
+
+      // Identificar items de combustible explícitamente tipados
+      fuelItemsToProcess = params.items
+        .map(it => ({ ocItem: ord.items.find(x => x.id === it.ordenCompraItemId)!, it }))
+        .filter(entry => entry.ocItem.tipoCombustibleId !== undefined);
+
+      if (fuelItemsToProcess.length === 0) {
+        throw new Error('El tanque especificado no corresponde a ningún item de combustible tipado en la recepción');
+      }
+
+      for (const entry of fuelItemsToProcess) {
+        if (entry.ocItem.tipoCombustibleId !== tankObj.tipoCombustibleId) {
+          throw new Error(
+            `Incompatibilidad de combustible: El item "${entry.ocItem.descripcionSnapshot}" (${entry.ocItem.tipoCombustibleId}) no coincide con el tipo del tanque ${tankObj.codigo} (${tankObj.tipoCombustibleId})`
+          );
+        }
+
+        const precioUnitario = entry.ocItem.precioUnitarioSnapshot;
+        if (precioUnitario === undefined || precioUnitario === null || precioUnitario <= 0 || isNaN(precioUnitario)) {
+          throw new Error('No existe precio unitario válido en la Orden de Compra para valorizar el ingreso de combustible al tanque');
+        }
+      }
     }
 
     // =========================================================================
     // 2. FASE DE EJECUCIÓN ATÓMICA
+    // Nota arquitectónica: En PostgreSQL/Supabase físico se ejecutará con BEGIN ... COMMIT
     // =========================================================================
     const receiptId = `rec-${Date.now()}-${Math.random().toString(36).substring(2, 5)}`;
     const numero = await purchaseReceiptRepository.getNextNumero(empresaId);
@@ -107,13 +140,14 @@ export class PurchaseReceiptService {
       const rechazada = it.cantidadRechazada ?? 0;
 
       ocItem.cantidadRecibida += it.cantidadAceptada;
-      ocItem.cantidadPendiente = Math.max(0, ocItem.cantidad - ocItem.cantidadRecibida);
+      ocItem.cantidadPendiente = ocItem.cantidad - ocItem.cantidadRecibida;
 
       receiptItems.push({
         id: `rec-item-${receiptId}-${receiptItems.length + 1}`,
         recepcionId: receiptId,
         ordenCompraItemId: ocItem.id,
         articuloId: ocItem.articuloId,
+        tipoCombustibleId: ocItem.tipoCombustibleId,
         tipo: ocItem.tipo,
         descripcionSnapshot: ocItem.descripcionSnapshot,
         cantidadRecibida: it.cantidadRecibida,
@@ -134,6 +168,31 @@ export class PurchaseReceiptService {
     ord.estado = allCompleted ? 'RECIBIDA' : 'PARCIALMENTE_RECIBIDA';
     await purchaseOrderRepository.save(ord);
 
+    let ingresoCombustibleId: string | undefined;
+
+    // Integración limpia con Módulo 4: Solamente sumar al tanque los litros de combustible compatible
+    if (params.tanqueId && tankObj && fuelItemsToProcess.length > 0) {
+      const totalLitrosCombustible = fuelItemsToProcess.reduce((sum, entry) => sum + entry.it.cantidadAceptada, 0);
+
+      if (totalLitrosCombustible > 0) {
+        const firstFuelEntry = fuelItemsToProcess[0];
+        const precioUnitario = firstFuelEntry.ocItem.precioUnitarioSnapshot;
+
+        const income = await tankService.registerIncome({
+          tanqueId: params.tanqueId,
+          litros: totalLitrosCombustible,
+          proveedorNombre: ord.proveedorNombreSnapshot,
+          proveedorId: ord.proveedorId,
+          precioUnitario,
+          numeroRemito: params.numeroRemitoProveedor,
+          usuarioId: params.usuarioId,
+          observaciones: `Recepción de compra ${numero} (OC ${ord.numero})`
+        });
+
+        ingresoCombustibleId = income.id;
+      }
+    }
+
     const receipt: RecepcionCompra = {
       id: receiptId,
       empresaId,
@@ -146,6 +205,7 @@ export class PurchaseReceiptService {
       plantaId: params.plantaId || ord.plantaEntregaId,
       depositoId: params.depositoId || ord.depositoEntregaId,
       tanqueId: params.tanqueId,
+      ingresoCombustibleId,
       recibidoPorEmpleadoId: params.recibidoPorEmpleadoId,
       estado: 'CONFIRMADA',
       items: receiptItems,
@@ -157,24 +217,6 @@ export class PurchaseReceiptService {
 
     await purchaseReceiptRepository.save(receipt);
 
-    // Integración limpia con Módulo 4: Si es una compra de combustible que entra a tanque
-    if (params.tanqueId) {
-      const totalLitrosCombustible = receiptItems.reduce((sum, it) => sum + it.cantidadAceptada, 0);
-      const fuelItemOC = ord.items.find(x => x.tipo === 'ARTICULO' || x.unidadMedida === 'LITRO');
-      const precioUnitario = fuelItemOC?.precioUnitarioSnapshot ?? 1150;
-
-      await tankService.registerIncome({
-        tanqueId: params.tanqueId,
-        litros: totalLitrosCombustible,
-        proveedorNombre: ord.proveedorNombreSnapshot,
-        proveedorId: ord.proveedorId,
-        precioUnitario,
-        numeroRemito: params.numeroRemitoProveedor,
-        usuarioId: params.usuarioId,
-        observaciones: `Recepción de compra ${receipt.numero} (OC ${ord.numero})`
-      });
-    }
-
     await auditRepository.recordAction(
       'comp_recepciones',
       receipt.id,
@@ -184,7 +226,8 @@ export class PurchaseReceiptService {
         numero: receipt.numero,
         ordenCompra: ord.numero,
         proveedor: ord.proveedorNombreSnapshot,
-        estadoOC: ord.estado
+        estadoOC: ord.estado,
+        ingresoCombustibleId
       },
       `Recepción de compra ${receipt.numero} CONFIRMADA (OC ${ord.numero}) - Remito: ${params.numeroRemitoProveedor || 'S/N'}`,
       params.usuarioId || 'admin_compras'
@@ -223,6 +266,11 @@ export class PurchaseReceiptService {
       }
       ord.estado = tieneRecibidos ? 'PARCIALMENTE_RECIBIDA' : 'EMITIDA';
       await purchaseOrderRepository.save(ord);
+    }
+
+    // Revertir el ingreso a tanque si la recepción generó ingreso de combustible
+    if (rec.ingresoCombustibleId) {
+      await tankService.cancelIncome(rec.ingresoCombustibleId, motivo, usuarioId);
     }
 
     const now = new Date().toISOString();

@@ -96,6 +96,11 @@ class PurchaseOrderRepository {
     return list.find(o => o.empresaId === empresaId && o.numero === numero) || null;
   }
 
+  async getBySolicitudId(solicitudId: string): Promise<OrdenCompra[]> {
+    const list = Array.from(this.orders.values());
+    return list.filter(o => o.solicitudCompraId === solicitudId);
+  }
+
   async getNextNumero(empresaId: string = 'emp-1'): Promise<string> {
     const current = this.sequenceCounters.get(empresaId) || 0;
     const next = current + 1;

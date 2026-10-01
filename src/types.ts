@@ -1230,6 +1230,7 @@ export interface SolicitudCompraItem {
   solicitudId: string;
   tipo: TipoItemCompra;
   articuloId?: string; // Futuro Módulo 6
+  tipoCombustibleId?: string; // Vínculo explícito tipado Módulo 4
   descripcionSnapshot: string;
   cantidad: number;
   unidadMedida: string; // 'KG', 'TN', 'M3', 'LITRO', 'UNIDAD', 'HORA', 'GLOBAL'
@@ -1280,6 +1281,7 @@ export interface CotizacionProveedorItem {
   cotizacionId: string;
   solicitudItemId?: string;
   articuloId?: string;
+  tipoCombustibleId?: string;
   descripcionSnapshot: string;
   cantidad: number;
   precioUnitario: number;
@@ -1330,6 +1332,7 @@ export interface OrdenCompraItem {
   ordenCompraId: string;
   solicitudItemId?: string;
   articuloId?: string;
+  tipoCombustibleId?: string;
   tipo: TipoItemCompra;
   descripcionSnapshot: string;
   cantidad: number;
@@ -1386,6 +1389,7 @@ export interface RecepcionCompraItem {
   recepcionId: string;
   ordenCompraItemId: string;
   articuloId?: string;
+  tipoCombustibleId?: string;
   tipo: TipoItemCompra;
   descripcionSnapshot: string;
   cantidadRecibida: number;
@@ -1407,6 +1411,8 @@ export interface RecepcionCompra {
   plantaId?: string;
   depositoId?: string;
   tanqueId?: string; // Para recepciones de combustible integradas a Módulo 4
+  ingresoCombustibleId?: string; // Vínculo explícito al ingreso en el tanque
+  movimientoTanqueId?: string; // Vínculo al movimiento físico en el kardex de tanque
   recibidoPorEmpleadoId: string;
   estado: EstadoRecepcionCompra;
   items: RecepcionCompraItem[];

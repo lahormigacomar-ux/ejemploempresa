@@ -6,6 +6,7 @@ import {
 } from '../types';
 import { supplierInvoiceRepository } from '../repositories/supplierInvoiceRepository';
 import { supplierRepository } from '../repositories/supplierRepository';
+import { purchaseOrderRepository } from '../repositories/purchaseOrderRepository';
 import { auditRepository } from '../repositories/auditRepository';
 
 export class SupplierInvoiceService {
@@ -44,6 +45,16 @@ export class SupplierInvoiceService {
     // 1. Validar Proveedor
     const prov = await supplierRepository.getById(params.proveedorId);
     if (!prov) throw new Error(`Proveedor ${params.proveedorId} no encontrado`);
+    if (prov.empresaId !== empresaId) {
+      throw new Error(`Aislamiento multiempresa violado: El proveedor ${prov.razonSocial} pertenece a la empresa ${prov.empresaId} y no a ${empresaId}`);
+    }
+
+    if (params.ordenCompraId) {
+      const oc = await purchaseOrderRepository.getById(params.ordenCompraId);
+      if (oc && oc.empresaId !== empresaId) {
+        throw new Error(`Aislamiento multiempresa violado: La Orden de Compra ${oc.numero} pertenece a la empresa ${oc.empresaId} y no a ${empresaId}`);
+      }
+    }
 
     if (params.puntoVenta <= 0 || params.numeroComprobante <= 0) {
       throw new Error('El punto de venta y número de comprobante deben ser números positivos válidos');

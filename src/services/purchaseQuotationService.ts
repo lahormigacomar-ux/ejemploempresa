@@ -18,6 +18,7 @@ export class PurchaseQuotationService {
     items: {
       solicitudItemId?: string;
       articuloId?: string;
+      tipoCombustibleId?: string;
       descripcion: string;
       cantidad: number;
       precioUnitario: number;
@@ -30,11 +31,21 @@ export class PurchaseQuotationService {
   }): Promise<CotizacionProveedor> {
     const empresaId = params.empresaId || 'emp-1';
 
-    // 1. Validar Proveedor
+    // 1. Validar Proveedor y aislamiento multiempresa
     const prov = await supplierRepository.getById(params.proveedorId);
     if (!prov) throw new Error(`Proveedor ${params.proveedorId} no encontrado`);
+    if (prov.empresaId !== empresaId) {
+      throw new Error(`Aislamiento multiempresa violado: El proveedor ${prov.razonSocial} pertenece a la empresa ${prov.empresaId} y no a ${empresaId}`);
+    }
     if (prov.estado !== 'ACTIVO') {
       throw new Error(`El proveedor ${prov.razonSocial} no se encuentra ACTIVO (Estado: ${prov.estado})`);
+    }
+
+    if (params.solicitudCompraId) {
+      const req = await purchaseRequestRepository.getById(params.solicitudCompraId);
+      if (req && req.empresaId !== empresaId) {
+        throw new Error(`Aislamiento multiempresa violado: La solicitud ${req.numero} pertenece a la empresa ${req.empresaId} y no a ${empresaId}`);
+      }
     }
 
     if (!params.items || params.items.length === 0) {
@@ -69,6 +80,7 @@ export class PurchaseQuotationService {
         cotizacionId: id,
         solicitudItemId: it.solicitudItemId,
         articuloId: it.articuloId,
+        tipoCombustibleId: it.tipoCombustibleId,
         descripcionSnapshot: it.descripcion.trim(),
         cantidad: it.cantidad,
         precioUnitario: it.precioUnitario,

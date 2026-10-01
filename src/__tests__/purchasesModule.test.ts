@@ -460,6 +460,7 @@ describe('MÓDULO 5 — COMPRAS & PROVEEDORES', () => {
       items: [
         {
           tipo: 'ARTICULO',
+          tipoCombustibleId: 'fuel-diesel-500',
           descripcion: 'Gasoil Grado 2 (Diesel 500)',
           cantidad: 5000,
           unidadMedida: 'LITRO',
@@ -666,9 +667,34 @@ describe('MÓDULO 5 — COMPRAS & PROVEEDORES', () => {
     expect(facGuardada?.motivoAnulacion).toBe('Anulación por error de imputación');
   });
 
-  it('Caso AC: Acciones críticas quedan auditadas en auditRepository', async () => {
+  it('Caso AC: Acciones críticas quedan auditadas en auditRepository con contenido verificable', async () => {
+    // Registrar una acción crítica concreta
+    const prov = await supplierService.createSupplier({
+      empresaId: 'emp-1',
+      codigo: 'PROV-AUDIT-01',
+      razonSocial: 'Proveedor Audit Test S.A.',
+      tipoDocumento: 'CUIT',
+      numeroDocumento: '30-77889911-2',
+      condicionIVA: 'RESPONSABLE_INSCRIPTO',
+      direccion: 'Ruta 9 KM 40',
+      localidad: 'Campana',
+      provincia: 'Buenos Aires',
+      pais: 'Argentina',
+      codigoPostal: '2804',
+      telefono: '03489-445566',
+      email: 'audit@proveedor.com',
+      condicionPagoDefault: 'CUENTA_CORRIENTE',
+      diasPagoDefault: 30,
+      monedaDefault: 'ARS',
+      categoriasProveidas: ['REPUESTOS']
+    });
+
     const logs = await auditRepository.getLogs('comp_proveedores');
-    expect(logs.length).toBeGreaterThanOrEqual(0);
+    expect(logs.length).toBeGreaterThan(0);
+    const logProv = logs.find(l => l.registroId === prov.id);
+    expect(logProv).toBeDefined();
+    expect(logProv?.accion).toBe('ALTA_PROVEEDOR');
+    expect(logProv?.entidad).toBe('comp_proveedores');
   });
 
   it('Caso AD: Multiempresa mantiene aislamiento lógico en solicitudes y órdenes', async () => {
@@ -694,5 +720,506 @@ describe('MÓDULO 5 — COMPRAS & PROVEEDORES', () => {
     expect(listEmp1.some(s => s.id === scEmp1.id)).toBe(true);
     expect(listEmp1.some(s => s.id === scEmp2.id)).toBe(false);
     expect(listEmp2.some(s => s.id === scEmp2.id)).toBe(true);
+  });
+
+  it('Caso AE: Recepción combustible usa precio snapshot de OC y nunca fallback inventado (rechaza si precio <= 0)', async () => {
+    // 1. Crear OC con item de combustible con precio inválido
+    const ocSinPrecio = await purchaseOrderService.createOrder({
+      empresaId: 'emp-1',
+      proveedorId: 'prov-comb-02',
+      items: [
+        {
+          tipo: 'ARTICULO',
+          tipoCombustibleId: 'fuel-diesel-500',
+          descripcion: 'Gasoil Grado 2 Sin Precio',
+          cantidad: 1000,
+          unidadMedida: 'LITRO',
+          precioUnitario: 1150 // lo creamos y luego alteramos el snapshot a 0 para simular ausencia de precio válido
+        }
+      ]
+    });
+    ocSinPrecio.items[0].precioUnitarioSnapshot = 0;
+    await purchaseOrderRepository.save(ocSinPrecio);
+
+    // 2. Intentar recibir en tanque: debe rechazarse en prevalidación
+    await expect(
+      purchaseReceiptService.confirmReceipt({
+        empresaId: 'emp-1',
+        ordenCompraId: ocSinPrecio.id,
+        tanqueId: 'tq-pl1-diesel-01',
+        recibidoPorEmpleadoId: 'emp-1',
+        items: [
+          {
+            ordenCompraItemId: ocSinPrecio.items[0].id,
+            cantidadRecibida: 1000,
+            cantidadAceptada: 1000
+          }
+        ]
+      })
+    ).rejects.toThrow(/No existe precio unitario válido en la Orden de Compra/);
+  });
+
+  it('Caso AF: Artículo normal NO se interpreta como combustible y rechaza recepción hacia tanque', async () => {
+    // OC de repuestos / filtros (tipo: ARTICULO pero SIN tipoCombustibleId)
+    const ocFiltros = await purchaseOrderService.createOrder({
+      empresaId: 'emp-1',
+      proveedorId: 'prov-rep-03',
+      items: [
+        {
+          tipo: 'ARTICULO',
+          descripcion: 'Filtro de Aceite Heavy Duty',
+          cantidad: 10,
+          unidadMedida: 'UNIDAD',
+          precioUnitario: 45000
+        }
+      ]
+    });
+
+    // Intentar recibir filtros con tanqueId especificado debe ser rechazado
+    await expect(
+      purchaseReceiptService.confirmReceipt({
+        empresaId: 'emp-1',
+        ordenCompraId: ocFiltros.id,
+        tanqueId: 'tq-pl1-diesel-01',
+        recibidoPorEmpleadoId: 'emp-1',
+        items: [
+          {
+            ordenCompraItemId: ocFiltros.items[0].id,
+            cantidadRecibida: 10,
+            cantidadAceptada: 10
+          }
+        ]
+      })
+    ).rejects.toThrow(/El tanque especificado no corresponde a ningún item de combustible tipado/);
+  });
+
+  it('Caso AG: Recepción mixta combustible + repuesto solo suma litros de combustible al tanque', async () => {
+    const tankBefore = await tankRepository.getTankById('tq-pl1-diesel-01');
+    const stockAntes = tankBefore?.stockActualLitros || 8500;
+
+    // OC con 5 filtros + 4.000 L de diesel
+    const ocMixta = await purchaseOrderService.createOrder({
+      empresaId: 'emp-1',
+      proveedorId: 'prov-comb-02',
+      items: [
+        {
+          tipo: 'ARTICULO',
+          descripcion: 'Filtro Purificador',
+          cantidad: 5,
+          unidadMedida: 'UNIDAD',
+          precioUnitario: 30000
+        },
+        {
+          tipo: 'ARTICULO',
+          tipoCombustibleId: 'fuel-diesel-500',
+          descripcion: 'Diesel 500 a Granel',
+          cantidad: 4000,
+          unidadMedida: 'LITRO',
+          precioUnitario: 1140
+        }
+      ]
+    });
+
+    const rec = await purchaseReceiptService.confirmReceipt({
+      empresaId: 'emp-1',
+      ordenCompraId: ocMixta.id,
+      tanqueId: 'tq-pl1-diesel-01',
+      recibidoPorEmpleadoId: 'emp-1',
+      items: [
+        {
+          ordenCompraItemId: ocMixta.items[0].id,
+          cantidadRecibida: 5,
+          cantidadAceptada: 5
+        },
+        {
+          ordenCompraItemId: ocMixta.items[1].id,
+          cantidadRecibida: 4000,
+          cantidadAceptada: 4000
+        }
+      ]
+    });
+
+    expect(rec.receipt.estado).toBe('CONFIRMADA');
+
+    // El stock del tanque debe haber subido exactamente 4.000 L (NO 4.005 L)
+    const tankAfter = await tankRepository.getTankById('tq-pl1-diesel-01');
+    expect(tankAfter?.stockActualLitros).toBe(stockAntes + 4000);
+  });
+
+  it('Caso AH: Anular recepción combustible revierte stock del tanque exactamente una vez', async () => {
+    const tankBefore = await tankRepository.getTankById('tq-pl1-diesel-01');
+    const stockAntes = tankBefore?.stockActualLitros || 8500;
+
+    const oc = await purchaseOrderService.createOrder({
+      empresaId: 'emp-1',
+      proveedorId: 'prov-comb-02',
+      items: [
+        {
+          tipo: 'ARTICULO',
+          tipoCombustibleId: 'fuel-diesel-500',
+          descripcion: 'Diesel Cisterna',
+          cantidad: 3000,
+          unidadMedida: 'LITRO',
+          precioUnitario: 1150
+        }
+      ]
+    });
+
+    const rec = await purchaseReceiptService.confirmReceipt({
+      empresaId: 'emp-1',
+      ordenCompraId: oc.id,
+      tanqueId: 'tq-pl1-diesel-01',
+      recibidoPorEmpleadoId: 'emp-1',
+      items: [
+        {
+          ordenCompraItemId: oc.items[0].id,
+          cantidadRecibida: 3000,
+          cantidadAceptada: 3000
+        }
+      ]
+    });
+
+    // Stock subió a stockAntes + 3000
+    const tankMid = await tankRepository.getTankById('tq-pl1-diesel-01');
+    expect(tankMid?.stockActualLitros).toBe(stockAntes + 3000);
+
+    // Anular recepción
+    await purchaseReceiptService.cancelReceipt(rec.receipt.id, 'Error de descarga en cisterna equivocada');
+
+    // Stock debe regresar exactamente a stockAntes
+    const tankEnd = await tankRepository.getTankById('tq-pl1-diesel-01');
+    expect(tankEnd?.stockActualLitros).toBe(stockAntes);
+  });
+
+  it('Caso AI: Doble anulación no genera segunda reversión', async () => {
+    const oc = await purchaseOrderService.createOrder({
+      empresaId: 'emp-1',
+      proveedorId: 'prov-comb-02',
+      items: [
+        {
+          tipo: 'ARTICULO',
+          tipoCombustibleId: 'fuel-diesel-500',
+          descripcion: 'Diesel Test',
+          cantidad: 1000,
+          unidadMedida: 'LITRO',
+          precioUnitario: 1150
+        }
+      ]
+    });
+
+    const rec = await purchaseReceiptService.confirmReceipt({
+      empresaId: 'emp-1',
+      ordenCompraId: oc.id,
+      tanqueId: 'tq-pl1-diesel-01',
+      recibidoPorEmpleadoId: 'emp-1',
+      items: [
+        {
+          ordenCompraItemId: oc.items[0].id,
+          cantidadRecibida: 1000,
+          cantidadAceptada: 1000
+        }
+      ]
+    });
+
+    await purchaseReceiptService.cancelReceipt(rec.receipt.id, 'Primera anulación');
+
+    await expect(
+      purchaseReceiptService.cancelReceipt(rec.receipt.id, 'Segunda anulación')
+    ).rejects.toThrow(/ya se encuentra ANULADA/);
+  });
+
+  it('Caso AJ: Error de integración con tanque no deja mutación parcial en OC/recepción/tanque', async () => {
+    const tankBefore = await tankRepository.getTankById('tq-pl1-diesel-01');
+    const stockAntes = tankBefore?.stockActualLitros || 8500;
+
+    const oc = await purchaseOrderService.createOrder({
+      empresaId: 'emp-1',
+      proveedorId: 'prov-comb-02',
+      items: [
+        {
+          tipo: 'ARTICULO',
+          tipoCombustibleId: 'fuel-nafta-sup', // Incompatible con tanque diesel
+          descripcion: 'Nafta Super',
+          cantidad: 2000,
+          unidadMedida: 'LITRO',
+          precioUnitario: 1100
+        }
+      ]
+    });
+
+    // Intentar recibir nafta en tanque diesel (debe fallar en prevalidación)
+    await expect(
+      purchaseReceiptService.confirmReceipt({
+        empresaId: 'emp-1',
+        ordenCompraId: oc.id,
+        tanqueId: 'tq-pl1-diesel-01',
+        recibidoPorEmpleadoId: 'emp-1',
+        items: [
+          {
+            ordenCompraItemId: oc.items[0].id,
+            cantidadRecibida: 2000,
+            cantidadAceptada: 2000
+          }
+        ]
+      })
+    ).rejects.toThrow(/Incompatibilidad de combustible/);
+
+    // Verificar que la OC no mutó sus cantidades recibidas
+    const ocAfter = await purchaseOrderRepository.getById(oc.id);
+    expect(ocAfter?.items[0].cantidadRecibida).toBe(0);
+    expect(ocAfter?.estado).toBe('EMITIDA');
+
+    // Verificar que el tanque no cambió su stock
+    const tankAfter = await tankRepository.getTankById('tq-pl1-diesel-01');
+    expect(tankAfter?.stockActualLitros).toBe(stockAntes);
+  });
+
+  it('Caso AK: No se puede ordenar más que la cantidad pendiente de la solicitud', async () => {
+    const sc = await purchaseRequestService.createRequest({
+      empresaId: 'emp-1',
+      solicitanteEmpleadoId: 'emp-1',
+      sector: 'TALLER',
+      motivo: 'Solicitud con tope',
+      items: [{ tipo: 'ARTICULO', descripcion: 'Rodamientos', cantidad: 10, unidadMedida: 'UNIDAD' }]
+    });
+
+    await purchaseRequestService.approveRequest(sc.id, 'emp-1', 'Aprobado');
+
+    // 1. Emitir primera OC por 8 unidades (pendiente queda en 2)
+    await purchaseOrderService.createOrder({
+      empresaId: 'emp-1',
+      proveedorId: 'prov-rep-03',
+      solicitudCompraId: sc.id,
+      items: [
+        {
+          solicitudItemId: sc.items[0].id,
+          tipo: 'ARTICULO',
+          descripcion: 'Rodamientos',
+          cantidad: 8,
+          unidadMedida: 'UNIDAD',
+          precioUnitario: 10000
+        }
+      ]
+    });
+
+    // 2. Intentar emitir segunda OC por 5 unidades (supera las 2 pendientes)
+    await expect(
+      purchaseOrderService.createOrder({
+        empresaId: 'emp-1',
+        proveedorId: 'prov-rep-03',
+        solicitudCompraId: sc.id,
+        items: [
+          {
+            solicitudItemId: sc.items[0].id,
+            tipo: 'ARTICULO',
+            descripcion: 'Rodamientos',
+            cantidad: 5,
+            unidadMedida: 'UNIDAD',
+            precioUnitario: 10000
+          }
+        ]
+      })
+    ).rejects.toThrow(/supera la cantidad pendiente/);
+  });
+
+  it('Caso AL: Cancelar única OC devuelve todas las cantidades pendientes a la solicitud', async () => {
+    const sc = await purchaseRequestService.createRequest({
+      empresaId: 'emp-1',
+      solicitanteEmpleadoId: 'emp-1',
+      sector: 'TALLER',
+      motivo: 'Solicitud para orden única',
+      items: [{ tipo: 'ARTICULO', descripcion: 'Neumáticos', cantidad: 4, unidadMedida: 'UNIDAD' }]
+    });
+
+    await purchaseRequestService.approveRequest(sc.id, 'emp-1', 'Aprobado');
+
+    const oc = await purchaseOrderService.createOrder({
+      empresaId: 'emp-1',
+      proveedorId: 'prov-rep-03',
+      solicitudCompraId: sc.id,
+      items: [
+        {
+          solicitudItemId: sc.items[0].id,
+          tipo: 'ARTICULO',
+          descripcion: 'Neumáticos',
+          cantidad: 4,
+          unidadMedida: 'UNIDAD',
+          precioUnitario: 250000
+        }
+      ]
+    });
+
+    const scOrdenada = await purchaseRequestRepository.getById(sc.id);
+    expect(scOrdenada?.estado).toBe('ORDENADA');
+    expect(scOrdenada?.items[0].cantidadPendiente).toBe(0);
+
+    // Cancelar la OC
+    await purchaseOrderService.cancelOrder(oc.id, 'Proveedor no dispone de stock');
+
+    const scRevertida = await purchaseRequestRepository.getById(sc.id);
+    expect(scRevertida?.estado).toBe('APROBADA');
+    expect(scRevertida?.items[0].cantidadOrdenada).toBe(0);
+    expect(scRevertida?.items[0].cantidadPendiente).toBe(4);
+  });
+
+  it('Caso AM: Cancelar una de varias OC recalcula correctamente cantidad ordenada y pendiente', async () => {
+    const sc = await purchaseRequestService.createRequest({
+      empresaId: 'emp-1',
+      solicitanteEmpleadoId: 'emp-1',
+      sector: 'TALLER',
+      motivo: 'Solicitud fraccionada',
+      items: [{ tipo: 'ARTICULO', descripcion: 'Aceite 15W40', cantidad: 100, unidadMedida: 'LITRO' }]
+    });
+
+    await purchaseRequestService.approveRequest(sc.id, 'emp-1', 'Aprobado');
+
+    // OC 1: 60 L
+    const oc1 = await purchaseOrderService.createOrder({
+      empresaId: 'emp-1',
+      proveedorId: 'prov-rep-03',
+      solicitudCompraId: sc.id,
+      items: [
+        {
+          solicitudItemId: sc.items[0].id,
+          tipo: 'ARTICULO',
+          descripcion: 'Aceite 15W40',
+          cantidad: 60,
+          unidadMedida: 'LITRO',
+          precioUnitario: 8000
+        }
+      ]
+    });
+
+    // OC 2: 40 L
+    const oc2 = await purchaseOrderService.createOrder({
+      empresaId: 'emp-1',
+      proveedorId: 'prov-rep-03',
+      solicitudCompraId: sc.id,
+      items: [
+        {
+          solicitudItemId: sc.items[0].id,
+          tipo: 'ARTICULO',
+          descripcion: 'Aceite 15W40',
+          cantidad: 40,
+          unidadMedida: 'LITRO',
+          precioUnitario: 8000
+        }
+      ]
+    });
+
+    const scTotal = await purchaseRequestRepository.getById(sc.id);
+    expect(scTotal?.estado).toBe('ORDENADA');
+    expect(scTotal?.items[0].cantidadPendiente).toBe(0);
+
+    // Cancelar la OC 2 (de 40 L)
+    await purchaseOrderService.cancelOrder(oc2.id, 'Cancelación de segunda orden');
+
+    const scRecalculada = await purchaseRequestRepository.getById(sc.id);
+    expect(scRecalculada?.estado).toBe('PARCIALMENTE_ORDENADA');
+    expect(scRecalculada?.items[0].cantidadOrdenada).toBe(60);
+    expect(scRecalculada?.items[0].cantidadPendiente).toBe(40);
+  });
+
+  it('Caso AN: Auditoría crítica produce realmente un log verificable en la entidad correspondiente', async () => {
+    const oc = await purchaseOrderService.createOrder({
+      empresaId: 'emp-1',
+      proveedorId: 'prov-rep-03',
+      items: [
+        {
+          tipo: 'ARTICULO',
+          descripcion: 'Repuesto Test Audit',
+          cantidad: 1,
+          unidadMedida: 'UNIDAD',
+          precioUnitario: 1000
+        }
+      ]
+    });
+
+    const logs = await auditRepository.getLogs('comp_ordenes_compra');
+    const logOC = logs.find(l => l.registroId === oc.id);
+    expect(logOC).toBeDefined();
+    expect(logOC?.accion).toBe('EMISION_ORDEN_COMPRA');
+    expect(logOC?.entidad).toBe('comp_ordenes_compra');
+  });
+
+  it('Caso AO: No se puede usar proveedor de otra empresa en Orden de Compra', async () => {
+    // Proveedor creado para empresa-2
+    const provEmp2 = await supplierService.createSupplier({
+      empresaId: 'emp-2',
+      codigo: 'PROV-EMP2-01',
+      razonSocial: 'Proveedor Empresa 2 S.A.',
+      tipoDocumento: 'CUIT',
+      numeroDocumento: '30-99887766-5',
+      condicionIVA: 'RESPONSABLE_INSCRIPTO',
+      direccion: 'Av Central 100',
+      localidad: 'Cordoba',
+      provincia: 'Cordoba',
+      pais: 'Argentina',
+      codigoPostal: '5000',
+      telefono: '0351-123456',
+      email: 'contacto@prov2.com',
+      condicionPagoDefault: 'CUENTA_CORRIENTE',
+      diasPagoDefault: 30,
+      monedaDefault: 'ARS',
+      categoriasProveidas: ['REPUESTOS']
+    });
+
+    // Intentar usar provEmp2 en una OC de empresa emp-1
+    await expect(
+      purchaseOrderService.createOrder({
+        empresaId: 'emp-1',
+        proveedorId: provEmp2.id,
+        items: [{ tipo: 'ARTICULO', descripcion: 'Test', cantidad: 1, unidadMedida: 'UNIDAD', precioUnitario: 100 }]
+      })
+    ).rejects.toThrow(/Aislamiento multiempresa violado/);
+  });
+
+  it('Caso AP: No se puede crear OC de empresa distinta a la solicitud de compra', async () => {
+    const scEmp2 = await purchaseRequestService.createRequest({
+      empresaId: 'emp-2',
+      solicitanteEmpleadoId: 'emp-1',
+      sector: 'TALLER',
+      motivo: 'Solicitud Empresa 2',
+      items: [{ tipo: 'ARTICULO', descripcion: 'Repuesto E2', cantidad: 5, unidadMedida: 'UNIDAD' }]
+    });
+
+    await purchaseRequestService.approveRequest(scEmp2.id, 'emp-1', 'Aprobado');
+
+    // Intentar crear OC en empresa emp-1 vinculando la solicitud de emp-2
+    await expect(
+      purchaseOrderService.createOrder({
+        empresaId: 'emp-1',
+        proveedorId: 'prov-rep-03',
+        solicitudCompraId: scEmp2.id,
+        items: [
+          {
+            solicitudItemId: scEmp2.items[0].id,
+            tipo: 'ARTICULO',
+            descripcion: 'Repuesto E2',
+            cantidad: 5,
+            unidadMedida: 'UNIDAD',
+            precioUnitario: 1000
+          }
+        ]
+      })
+    ).rejects.toThrow(/Aislamiento multiempresa violado/);
+  });
+
+  it('Caso AQ: No se puede recibir una OC desde una empresa distinta', async () => {
+    const ocEmp1 = await purchaseOrderService.createOrder({
+      empresaId: 'emp-1',
+      proveedorId: 'prov-rep-03',
+      items: [{ tipo: 'ARTICULO', descripcion: 'Item E1', cantidad: 10, unidadMedida: 'UNIDAD', precioUnitario: 500 }]
+    });
+
+    // Intentar recibir la OC de emp-1 usando empresaId emp-2
+    await expect(
+      purchaseReceiptService.confirmReceipt({
+        empresaId: 'emp-2',
+        ordenCompraId: ocEmp1.id,
+        recibidoPorEmpleadoId: 'emp-1',
+        items: [{ ordenCompraItemId: ocEmp1.items[0].id, cantidadRecibida: 10, cantidadAceptada: 10 }]
+      })
+    ).rejects.toThrow(/Aislamiento multiempresa violado/);
   });
 });

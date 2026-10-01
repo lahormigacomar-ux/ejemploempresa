@@ -178,6 +178,10 @@ class TankRepository {
     return income;
   }
 
+  async getTankIncomeById(id: string): Promise<IngresoTanqueCombustible | null> {
+    return this.incomes.find(i => i.id === id) || null;
+  }
+
   async getTankMovements(tanqueId?: string): Promise<MovimientoTanqueCombustible[]> {
     if (tanqueId) {
       return this.movements.filter(m => m.tanqueId === tanqueId);

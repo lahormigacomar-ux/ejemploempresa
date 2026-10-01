@@ -27,6 +27,7 @@ export class PurchaseOrderService {
     items: {
       solicitudItemId?: string;
       articuloId?: string;
+      tipoCombustibleId?: string;
       tipo?: TipoItemCompra;
       descripcion: string;
       cantidad: number;
@@ -43,18 +44,24 @@ export class PurchaseOrderService {
   }): Promise<OrdenCompra> {
     const empresaId = params.empresaId || 'emp-1';
 
-    // 1. Validar Proveedor
+    // 1. Validar Proveedor y aislamiento multiempresa
     const prov = await supplierRepository.getById(params.proveedorId);
     if (!prov) throw new Error(`Proveedor ${params.proveedorId} no encontrado`);
+    if (prov.empresaId !== empresaId) {
+      throw new Error(`Aislamiento multiempresa violado: El proveedor ${prov.razonSocial} pertenece a la empresa ${prov.empresaId} y no a ${empresaId}`);
+    }
     if (prov.estado !== 'ACTIVO') {
       throw new Error(`El proveedor ${prov.razonSocial} no se encuentra ACTIVO (Estado: ${prov.estado})`);
     }
 
-    // 2. Si viene de una Solicitud de Compra, validar estado
+    // 2. Si viene de una Solicitud de Compra, validar estado, multiempresa y cantidades
     let solicitud = null;
     if (params.solicitudCompraId) {
       solicitud = await purchaseRequestRepository.getById(params.solicitudCompraId);
       if (!solicitud) throw new Error(`Solicitud de compra ${params.solicitudCompraId} no encontrada`);
+      if (solicitud.empresaId !== empresaId) {
+        throw new Error(`Aislamiento multiempresa violado: La solicitud de compra ${solicitud.numero} pertenece a la empresa ${solicitud.empresaId} y no a ${empresaId}`);
+      }
       if (solicitud.requiereAprobacion && solicitud.estado !== 'APROBADA' && solicitud.estado !== 'EN_COTIZACION' && solicitud.estado !== 'PARCIALMENTE_ORDENADA') {
         throw new Error(`No se puede emitir una Orden de Compra para una solicitud en estado ${solicitud.estado} (Requiere APROBADA)`);
       }
@@ -62,6 +69,26 @@ export class PurchaseOrderService {
 
     if (!params.items || params.items.length === 0) {
       throw new Error('La Orden de Compra debe contener al menos un item');
+    }
+
+    // Pre-validar cantidades contra solicitud: NO PERMITIR SOBRE-ORDENAR
+    if (solicitud) {
+      for (const it of params.items) {
+        if (it.solicitudItemId) {
+          const reqItem = solicitud.items.find(x => x.id === it.solicitudItemId);
+          if (!reqItem) {
+            throw new Error(`Item ${it.solicitudItemId} no pertenece a la Solicitud de Compra ${solicitud.numero}`);
+          }
+          if (it.cantidad <= 0) {
+            throw new Error(`La cantidad a ordenar para "${it.descripcion}" debe ser mayor a 0`);
+          }
+          if (it.cantidad > reqItem.cantidadPendiente) {
+            throw new Error(
+              `Sobre-ordenación rechazada: La cantidad a ordenar (${it.cantidad} ${reqItem.unidadMedida}) supera la cantidad pendiente (${reqItem.cantidadPendiente} ${reqItem.unidadMedida}) para el item "${reqItem.descripcionSnapshot}" en la Solicitud ${solicitud.numero}`
+            );
+          }
+        }
+      }
     }
 
     const id = `oc-${Date.now()}-${Math.random().toString(36).substring(2, 5)}`;
@@ -87,12 +114,16 @@ export class PurchaseOrderService {
       descuentosGeneral += montoDescuento;
       impuestosGeneral += (montoIva + otros);
 
+      const matchingReqItem = solicitud?.items.find(x => x.id === it.solicitudItemId);
+      const tipoCombustibleId = it.tipoCombustibleId || matchingReqItem?.tipoCombustibleId;
+
       return {
         id: `oc-item-${id}-${idx + 1}`,
         ordenCompraId: id,
         solicitudItemId: it.solicitudItemId,
         articuloId: it.articuloId,
-        tipo: it.tipo || 'ARTICULO',
+        tipoCombustibleId,
+        tipo: it.tipo || (tipoCombustibleId ? 'ARTICULO' : 'ARTICULO'),
         descripcionSnapshot: it.descripcion.trim(),
         cantidad: it.cantidad,
         unidadMedida: it.unidadMedida || 'UNIDAD',
@@ -150,7 +181,7 @@ export class PurchaseOrderService {
           const reqItem = solicitud.items.find(x => x.id === it.solicitudItemId);
           if (reqItem) {
             reqItem.cantidadOrdenada += it.cantidad;
-            reqItem.cantidadPendiente = Math.max(0, reqItem.cantidad - reqItem.cantidadOrdenada);
+            reqItem.cantidadPendiente = reqItem.cantidad - reqItem.cantidadOrdenada;
           }
         }
       }
@@ -200,6 +231,38 @@ export class PurchaseOrderService {
     ord.updatedAt = now;
 
     await purchaseOrderRepository.save(ord);
+
+    // Si la orden estaba vinculada a una solicitud, recalcular limpiamente las cantidades considerando sólo OCs activas
+    if (ord.solicitudCompraId) {
+      const solicitud = await purchaseRequestRepository.getById(ord.solicitudCompraId);
+      if (solicitud) {
+        const allOrders = await purchaseOrderRepository.getBySolicitudId(solicitud.id);
+        const activeOrders = allOrders.filter(o => o.id !== ord.id && o.estado !== 'CANCELADA');
+
+        for (const reqItem of solicitud.items) {
+          const totalOrdenado = activeOrders.reduce((sum, o) => {
+            const it = o.items.find(x => x.solicitudItemId === reqItem.id);
+            return sum + (it ? it.cantidad : 0);
+          }, 0);
+
+          reqItem.cantidadOrdenada = totalOrdenado;
+          reqItem.cantidadPendiente = reqItem.cantidad - totalOrdenado;
+        }
+
+        const allZero = solicitud.items.every(it => it.cantidadOrdenada === 0);
+        const allCompleted = solicitud.items.every(it => it.cantidadPendiente === 0);
+
+        if (allZero) {
+          solicitud.estado = 'APROBADA';
+        } else if (allCompleted) {
+          solicitud.estado = 'ORDENADA';
+        } else {
+          solicitud.estado = 'PARCIALMENTE_ORDENADA';
+        }
+
+        await purchaseRequestRepository.save(solicitud);
+      }
+    }
 
     await auditRepository.recordAction(
       'comp_ordenes_compra',
