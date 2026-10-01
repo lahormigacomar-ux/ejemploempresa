@@ -245,7 +245,7 @@ describe('MÓDULO 3 — MANTENIMIENTO, TALLER, REPUESTOS Y NEUMÁTICOS', () => {
   });
 
   it('Caso L: Prevención de mutaciones parciales: odómetro válido + horómetro regresivo inválido rechaza cierre sin alterar contadores', async () => {
-    // MIX-12: odómetro = 68.500 km, horómetro = 3.420 hs
+    // MIX-12: odómetro = 68.500 km, horómetro = 3.400 hs
     const ot = await maintenanceService.createWorkOrder({
       equipoId: 'eq-mix-12',
       tipoMantenimiento: 'PREVENTIVO',
