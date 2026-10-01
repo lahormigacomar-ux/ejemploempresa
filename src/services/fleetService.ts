@@ -33,7 +33,7 @@ export class FleetService {
   async registerOdometerReading(
     equipoId: string,
     nuevoKm: number,
-    origen: 'MANUAL' | 'VIAJE' | 'TALLER' | 'TELEMETRIA' | 'GPS' = 'MANUAL',
+    origen: 'MANUAL' | 'VIAJE' | 'TALLER' | 'COMBUSTIBLE' | 'TELEMETRIA' | 'GPS' = 'MANUAL',
     referenciaId?: string,
     usuario?: string
   ): Promise<LecturaContador> {
@@ -43,7 +43,7 @@ export class FleetService {
   async registerHourmeterReading(
     equipoId: string,
     nuevasHoras: number,
-    origen: 'MANUAL' | 'VIAJE' | 'TALLER' | 'TELEMETRIA' | 'GPS' = 'MANUAL',
+    origen: 'MANUAL' | 'VIAJE' | 'TALLER' | 'COMBUSTIBLE' | 'TELEMETRIA' | 'GPS' = 'MANUAL',
     referenciaId?: string,
     usuario?: string
   ): Promise<LecturaContador> {

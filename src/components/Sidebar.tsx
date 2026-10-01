@@ -13,7 +13,8 @@ import {
   Receipt,
   PieChart,
   Globe,
-  ShieldAlert
+  ShieldAlert,
+  Fuel
 } from 'lucide-react';
 
 export type ActiveTab =
@@ -22,6 +23,7 @@ export type ActiveTab =
   | 'personnel'
   | 'fleet'
   | 'maintenance'
+  | 'fuel'
   | 'stock'
   | 'sales'
   | 'logistics'
@@ -44,6 +46,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab }) => 
     { id: 'personnel', label: 'Personal & Sueldos', icon: <Users className="w-4 h-4" />, badge: 'ARCA' },
     { id: 'fleet', label: 'Flota & Maquinaria', icon: <Truck className="w-4 h-4" /> },
     { id: 'maintenance', label: 'Taller & Mantenimiento', icon: <Wrench className="w-4 h-4" />, badge: 'OT' },
+    { id: 'fuel', label: 'Combustible & Rendimiento', icon: <Fuel className="w-4 h-4" />, badge: 'L/100km' },
     { id: 'stock', label: 'Stock & Áridos (A/B/C)', icon: <Box className="w-4 h-4" /> },
     { id: 'sales', label: 'Ventas & Pedidos', icon: <ShoppingCart className="w-4 h-4" /> },
     { id: 'logistics', label: 'Logística & GPS', icon: <MapPin className="w-4 h-4" />, badge: 'OR-Tools' },

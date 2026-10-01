@@ -386,7 +386,7 @@ export interface LecturaContador {
   fechaHora: string;
   tipoContador: 'ODOMETRO_KM' | 'HOROMETRO_HS';
   valor: number;
-  origenLectura: 'MANUAL' | 'VIAJE' | 'TALLER' | 'TELEMETRIA' | 'GPS' | 'IMPORTACION';
+  origenLectura: 'MANUAL' | 'VIAJE' | 'TALLER' | 'COMBUSTIBLE' | 'TELEMETRIA' | 'GPS' | 'IMPORTACION';
   referenciaOrigenId?: string;
   usuarioRegistro?: string;
   observaciones?: string;
@@ -914,3 +914,189 @@ export interface Factura {
   estado: 'emitida' | 'pagada' | 'vencida' | 'anulada';
   remitoNros: string[];
 }
+
+// ==========================================
+// MÓDULO 4: COMBUSTIBLE Y RENDIMIENTO
+// ==========================================
+export type OrigenAbastecimiento = 'TANQUE_INTERNO' | 'ESTACION_SERVICIO' | 'PROVEEDOR_DIRECTO' | 'OTRO';
+export type EstadoTanque = 'ACTIVO' | 'INACTIVO' | 'MANTENIMIENTO';
+export type TipoMovimientoTanque = 'INGRESO' | 'EGRESO' | 'AJUSTE_POSITIVO' | 'AJUSTE_NEGATIVO';
+export type EstadoAbastecimiento = 'BORRADOR' | 'CONFIRMADO' | 'ANULADO';
+export type MetricaRendimiento = 'KM_L' | 'L_100KM' | 'L_HORA' | 'L_VIAJE' | 'L_M3' | 'L_TONELADA' | 'L_CICLO';
+export type NivelDesvioRendimiento = 'NORMAL' | 'ADVERTENCIA' | 'CRITICO' | 'SIN_REFERENCIA' | 'SIN_DATOS';
+export type MetodoMedicionTanque = 'MANUAL' | 'VARILLA' | 'MEDIDOR' | 'SENSOR';
+export type TipoAlertaCombustible =
+  | 'CONSUMO_CRITICO'
+  | 'CONSUMO_ADVERTENCIA'
+  | 'TANQUE_BAJO_MINIMO'
+  | 'DIFERENCIA_INVENTARIO'
+  | 'CARGA_DUPLICADA'
+  | 'LECTURA_INVALIDA'
+  | 'EQUIPO_NO_HABILITADO'
+  | 'COMPROBANTE_DUPLICADO';
+export type SeveridadAlerta = 'INFORMATIVA' | 'ADVERTENCIA' | 'BLOQUEANTE';
+
+export interface TipoCombustible {
+  id: string;
+  empresaId: string;
+  codigo: string; // ej: DIESEL_500, DIESEL_PREMIUM, NAFTA_SUPER, UREA
+  nombre: string;
+  unidadMedida: string;
+  activo: boolean;
+  precioReferencia?: number;
+}
+
+export interface TanqueCombustible {
+  id: string;
+  empresaId: string;
+  codigo: string; // ej: TQ-PL1-01
+  nombre: string;
+  tipoCombustibleId: string;
+  capacidadLitros: number;
+  plantaId?: string;
+  depositoId?: string;
+  centroCostoId?: string;
+  estado: EstadoTanque;
+  stockActualLitros: number;
+  stockMinimoLitros: number;
+  permiteStockNegativo?: boolean;
+  observaciones?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface MovimientoTanqueCombustible {
+  id: string;
+  empresaId: string;
+  tanqueId: string;
+  fechaHora: string;
+  tipoMovimiento: TipoMovimientoTanque;
+  litros: number;
+  origenModulo: string; // 'COMBUSTIBLE_ABASTECIMIENTO' | 'COMBUSTIBLE_INGRESO' | 'COMBUSTIBLE_AJUSTE' | 'ANULACION_ABASTECIMIENTO'
+  origenId: string;
+  costoUnitarioSnapshot?: number;
+  costoTotalSnapshot?: number;
+  stockAnteriorLitros: number;
+  stockPosteriorLitros: number;
+  usuarioId?: string;
+  observaciones?: string;
+  eventId?: string;
+}
+
+export interface IngresoTanqueCombustible {
+  id: string;
+  empresaId: string;
+  tanqueId: string;
+  fechaHora: string;
+  litros: number;
+  proveedorId?: string;
+  proveedorNombreSnapshot: string;
+  numeroRemito?: string;
+  numeroFactura?: string;
+  precioUnitario: number;
+  costoTotal: number;
+  usuarioId?: string;
+  observaciones?: string;
+  createdAt: string;
+}
+
+export interface AbastecimientoCombustible {
+  id: string;
+  empresaId: string;
+  numeroVale?: string;
+  fechaHora: string;
+  equipoId: string;
+  empleadoId?: string;
+  tipoCombustibleId: string;
+  origenAbastecimiento: OrigenAbastecimiento;
+  tanqueId?: string;
+  estacionServicioNombreSnapshot?: string;
+  proveedorNombreSnapshot?: string;
+  litros: number;
+  precioUnitarioSnapshot: number;
+  costoTotalSnapshot: number;
+  odometroKmSnapshot?: number;
+  horometroHsSnapshot?: number;
+  odometroKmAnteriorSnapshot?: number;
+  horometroHsAnteriorSnapshot?: number;
+  kmRecorridosEstimados?: number;
+  horasTrabajadasEstimadas?: number;
+  rendimientoCalculado?: number;
+  metricaRendimiento?: MetricaRendimiento;
+  nivelDesvio?: NivelDesvioRendimiento;
+  centroCostoId?: string;
+  numeroComprobante?: string;
+  numeroTicket?: string;
+  fotoTicketUrl?: string;
+  observaciones?: string;
+  estado: EstadoAbastecimiento;
+  fechaAnulacion?: string;
+  usuarioAnulacion?: string;
+  motivoAnulacion?: string;
+  viajeId?: string;
+  actividadId?: string;
+  eventId?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ParametroRendimientoEquipo {
+  id: string;
+  empresaId: string;
+  equipoId?: string; // Opcional si es general por tipo
+  tipoEquipo?: string; // ej: MIXER, CARGADORA, CAMION, BOMBA
+  metrica: MetricaRendimiento;
+  valorObjetivo: number; // ej: 32.0 (L/100km) u 8.5 (L/h)
+  toleranciaAdvertenciaPct: number; // ej: 10%
+  toleranciaCriticaPct: number; // ej: 20%
+  vigenciaDesde: string;
+  vigenciaHasta?: string;
+  activo: boolean;
+  observaciones?: string;
+}
+
+export interface MedicionTanqueCombustible {
+  id: string;
+  empresaId: string;
+  tanqueId: string;
+  fechaHora: string;
+  litrosMedidos: number;
+  metodo: MetodoMedicionTanque;
+  stockSistemaMomento: number;
+  diferenciaLitros: number;
+  usuarioId?: string;
+  observaciones?: string;
+}
+
+export interface AjusteTanqueCombustible {
+  id: string;
+  empresaId: string;
+  tanqueId: string;
+  fechaHora: string;
+  stockSistemaAntes: number;
+  stockMedido: number;
+  diferenciaLitros: number;
+  tipoAjuste: 'POSITIVO' | 'NEGATIVO';
+  motivo: string;
+  usuarioId: string;
+  movimientoTanqueId?: string;
+  createdAt: string;
+}
+
+export interface AlertaCombustible {
+  id: string;
+  empresaId: string;
+  tipo: TipoAlertaCombustible;
+  severidad: SeveridadAlerta;
+  titulo: string;
+  descripcion: string;
+  origenModulo: string;
+  origenId: string;
+  equipoId?: string;
+  tanqueId?: string;
+  fecha: string;
+  resuelta: boolean;
+  resueltaPor?: string;
+  fechaResolucion?: string;
+}
+

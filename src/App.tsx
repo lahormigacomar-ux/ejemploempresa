@@ -21,6 +21,7 @@ import { MastersView } from './components/MastersView';
 import { PersonnelView } from './components/PersonnelView';
 import { FleetView } from './components/FleetView';
 import { MaintenanceView } from './components/MaintenanceView';
+import { FuelView } from './components/FuelView';
 import { StockAggregatesView } from './components/StockAggregatesView';
 import { SalesOrdersView } from './components/SalesOrdersView';
 import { LogisticsDispatchView } from './components/LogisticsDispatchView';
@@ -70,6 +71,7 @@ export default function App() {
           {activeTab === 'personnel' && <PersonnelView />}
           {activeTab === 'fleet' && <FleetView />}
           {activeTab === 'maintenance' && <MaintenanceView />}
+          {activeTab === 'fuel' && <FuelView />}
           {activeTab === 'stock' && <StockAggregatesView articulos={mockArticulos} />}
           {activeTab === 'sales' && <SalesOrdersView pedidos={mockPedidos} />}
           {activeTab === 'logistics' && <LogisticsDispatchView viajes={mockViajes} equipos={mockEquipos} />}

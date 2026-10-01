@@ -511,7 +511,7 @@ class EquipmentRepository {
     equipoId: string,
     tipoContador: 'ODOMETRO_KM' | 'HOROMETRO_HS',
     nuevoValor: number,
-    origen: 'MANUAL' | 'VIAJE' | 'TALLER' | 'TELEMETRIA' | 'GPS' = 'MANUAL',
+    origen: 'MANUAL' | 'VIAJE' | 'TALLER' | 'COMBUSTIBLE' | 'TELEMETRIA' | 'GPS' | 'IMPORTACION' = 'MANUAL',
     referenciaOrigenId?: string,
     usuarioRegistro?: string
   ): Promise<LecturaContador> {
