@@ -8,6 +8,10 @@ import { auditRepository } from '../repositories/auditRepository';
 export class FleetEventHandler {
   private processedEvents: Set<string> = new Set();
 
+  resetForTesting() {
+    this.processedEvents.clear();
+  }
+
   async onEquipoEntraTaller(eventId: string, equipoId: string, ordenTrabajoId: string, motivo: string) {
     if (this.processedEvents.has(eventId)) {
       return { processed: false, isDuplicate: true };

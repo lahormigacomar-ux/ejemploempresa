@@ -483,22 +483,37 @@ export interface Equipo {
     fechaDesde: string;
   };
 
-  // Compatibilidad con módulos existentes
+  /**
+   * =========================================================================
+   * CAMPOS DE COMPATIBILIDAD LEGACY (OBSOLETOS / DEPRECATED)
+   * Reservados temporalmente para no romper componentes existentes en transición.
+   * El código nuevo de los módulos 2 en adelante DEBE consumir los campos canónicos arriba definidos.
+   * =========================================================================
+   */
+  /** @deprecated Utilizar `codigoInterno` */
   codigo: string;
+  /** @deprecated Utilizar `tipoEquipo` */
   tipo: string;
+  /** @deprecated Utilizar `dominioPatente` */
   dominio: string;
+  /** @deprecated Utilizar `${marca} ${modelo}` */
   marcaModelo: string;
+  /** @deprecated Utilizar `odometroKmActual` */
   kmActual: number;
+  /** @deprecated Utilizar `horometroHsActual` */
   horometroActual: number;
+  /** @deprecated Utilizar `especificaciones.capacidadTamborM3` */
   capacidadM3?: number;
+  /** @deprecated Utilizar `estadoOperativo` */
   estado: string;
+  /** @deprecated Utilizar `centroCostoHabitualId` */
   centroCostoId: string;
 }
 
 export interface EquipmentAvailabilityResult {
   disponible: boolean;
   bloqueante: boolean;
-  codigoMotivo?: 'OK' | 'FUERA_SERVICIO' | 'EN_TALLER' | 'DOC_BLOQUEANTE_VENCIDO' | 'SEGURO_VENCIDO' | 'ASIGNACION_EN_CURSO' | 'CAPACIDAD_INSUFICIENTE' | 'NO_EXISTE' | 'INACTIVO_ADMINISTRATIVO';
+  codigoMotivo?: 'OK' | 'FUERA_SERVICIO' | 'EN_TALLER' | 'DOC_BLOQUEANTE_VENCIDO' | 'SEGURO_VENCIDO' | 'ASIGNACION_EN_CURSO' | 'EQUIPO_RESERVADO' | 'CAPACIDAD_INSUFICIENTE' | 'NO_EXISTE' | 'INACTIVO_ADMINISTRATIVO';
   motivo?: string;
   restricciones: string[];
 }

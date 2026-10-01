@@ -87,7 +87,7 @@ CREATE TABLE IF NOT EXISTS flota_especificaciones (
     tipo_combustible VARCHAR(30) DEFAULT 'DIESEL' CHECK (tipo_combustible IN ('DIESEL', 'NAFTA', 'GNC', 'ELECTRICO', 'HIBRIDO', 'OTRO')),
     potencia_hp NUMERIC(8,2),
     cantidad_ejes INTEGER DEFAULT 2,
-    tipo_traccion VARCHAR(50), -- '4x2', '6x4', '8x4', 'Oruga', etc.
+    tipo_traccion VARCHAR(50),
     
     -- Específico para Mixer
     capacidad_tambor_m3 NUMERIC(5,2),
@@ -113,7 +113,7 @@ CREATE TABLE IF NOT EXISTS flota_lecturas_contadores (
     tipo_contador VARCHAR(30) NOT NULL CHECK (tipo_contador IN ('ODOMETRO_KM', 'HOROMETRO_HS')),
     valor NUMERIC(12,2) NOT NULL,
     origen_lectura VARCHAR(30) NOT NULL CHECK (origen_lectura IN ('MANUAL', 'VIAJE', 'TALLER', 'TELEMETRIA', 'GPS', 'IMPORTACION')),
-    referencia_origen_id VARCHAR(100), -- ej. id del viaje o de la OT
+    referencia_origen_id VARCHAR(100),
     usuario_registro UUID,
     observaciones TEXT,
     created_at TIMESTAMPTZ DEFAULT NOW()
@@ -144,7 +144,7 @@ CREATE TABLE IF NOT EXISTS flota_seguros (
     equipo_id UUID NOT NULL REFERENCES flota_equipos(id) ON DELETE CASCADE,
     compania_aseguradora VARCHAR(100) NOT NULL,
     numero_poliza VARCHAR(100) NOT NULL,
-    tipo_cobertura VARCHAR(100) NOT NULL, -- 'Responsabilidad Civil', 'Todo Riesgo', 'Terceros Completo'
+    tipo_cobertura VARCHAR(100) NOT NULL,
     vigencia_desde DATE NOT NULL,
     vigencia_hasta DATE NOT NULL,
     suma_asegurada_usd NUMERIC(14,2),
@@ -158,7 +158,7 @@ CREATE TABLE IF NOT EXISTS flota_seguros (
 CREATE TABLE IF NOT EXISTS flota_asignaciones_personal (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     equipo_id UUID NOT NULL REFERENCES flota_equipos(id) ON DELETE CASCADE,
-    empleado_id UUID NOT NULL, -- Referencia a rrhh_empleados(id)
+    empleado_id UUID NOT NULL,
     fecha_desde TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     fecha_hasta TIMESTAMPTZ,
     tipo_asignacion VARCHAR(30) NOT NULL DEFAULT 'HABITUAL' CHECK (tipo_asignacion IN ('HABITUAL', 'TEMPORAL', 'RELEVO', 'PRUEBA')),
@@ -166,5 +166,20 @@ CREATE TABLE IF NOT EXISTS flota_asignaciones_personal (
     estado VARCHAR(30) NOT NULL DEFAULT 'ACTIVA' CHECK (estado IN ('ACTIVA', 'FINALIZADA', 'CANCELADA')),
     observaciones TEXT,
     usuario_registro UUID,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 7. Registro e Idempotencia de Eventos de Dominio de Flota
+CREATE TABLE IF NOT EXISTS flota_eventos_procesados (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    empresa_id UUID NOT NULL,
+    event_id VARCHAR(100) NOT NULL UNIQUE,
+    tipo_evento VARCHAR(50) NOT NULL,
+    equipo_id UUID NOT NULL REFERENCES flota_equipos(id) ON DELETE CASCADE,
+    fecha_hora TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    origen_modulo VARCHAR(30) NOT NULL CHECK (origen_modulo IN ('LOGISTICA', 'TALLER', 'ARIDOS', 'PRODUCCION', 'SISTEMA')),
+    origen_id VARCHAR(100) NOT NULL,
+    estado VARCHAR(30) NOT NULL DEFAULT 'PROCESADO' CHECK (estado IN ('PROCESADO', 'DUPLICADO', 'ERROR')),
+    error_mensaje TEXT,
     created_at TIMESTAMPTZ DEFAULT NOW()
 );

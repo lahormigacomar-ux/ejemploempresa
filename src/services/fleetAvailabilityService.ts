@@ -63,13 +63,24 @@ export class FleetAvailabilityService {
       };
     }
 
-    if (equipo.estadoOperativo === 'EN_VIAJE' || equipo.estadoOperativo === 'EN_OPERACION') {
+    if (equipo.estadoOperativo === 'EN_VIAJE' || equipo.estadoOperativo === 'EN_OPERACION' || equipo.estadoOperativo === 'ASIGNADO') {
       restricciones.push('ASIGNACION_EN_CURSO');
       return {
         disponible: false,
         bloqueante: true,
         codigoMotivo: 'ASIGNACION_EN_CURSO',
         motivo: `El equipo ${equipo.codigoInterno} ya se encuentra ${equipo.estadoOperativo} en este momento.`,
+        restricciones
+      };
+    }
+
+    if (equipo.estadoOperativo === 'RESERVADO') {
+      restricciones.push('EQUIPO_RESERVADO');
+      return {
+        disponible: false,
+        bloqueante: true,
+        codigoMotivo: 'EQUIPO_RESERVADO',
+        motivo: `El equipo ${equipo.codigoInterno} se encuentra RESERVADO para otra programación operativa.`,
         restricciones
       };
     }

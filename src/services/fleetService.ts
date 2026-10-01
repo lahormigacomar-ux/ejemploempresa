@@ -6,6 +6,7 @@ import {
 import { equipmentRepository } from '../repositories/equipmentRepository';
 import { employeeRepository } from '../repositories/employeeRepository';
 import { hrAvailabilityService } from './hrAvailabilityService';
+import { fleetAvailabilityService } from './fleetAvailabilityService';
 
 /**
  * SERVICIO DE DOMINIO DE FLOTA & MAQUINARIA
@@ -59,10 +60,19 @@ export class FleetService {
     const empleado = await employeeRepository.getById(empleadoId);
     if (!empleado) throw new Error(`Empleado ${empleadoId} no existe`);
 
-    // Validar disponibilidad del empleado en RRHH
-    const avail = await hrAvailabilityService.canAssignEmployee(empleadoId, new Date().toISOString());
-    if (!avail.disponible && avail.bloqueante) {
-      throw new Error(`No se puede asignar el operador: ${avail.motivo}`);
+    const equipo = await equipmentRepository.getById(equipoId);
+    if (!equipo) throw new Error(`Equipo ${equipoId} no existe`);
+
+    // 1. Validar disponibilidad del equipo en Flota
+    const eqAvail = await fleetAvailabilityService.canAssignEquipment(equipoId);
+    if (!eqAvail.disponible && eqAvail.bloqueante) {
+      throw new Error(`No se puede asignar el equipo: ${eqAvail.motivo}`);
+    }
+
+    // 2. Validar disponibilidad del empleado en RRHH (licencia, estado, novedad)
+    const empAvail = await hrAvailabilityService.canAssignEmployee(empleadoId, new Date().toISOString());
+    if (!empAvail.disponible && empAvail.bloqueante) {
+      throw new Error(`No se puede asignar el operador: ${empAvail.motivo}`);
     }
 
     const nombreCompleto = `${empleado.apellido}, ${empleado.nombre}`;
