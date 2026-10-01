@@ -88,10 +88,9 @@ class InventoryMovementRepository {
     return this.movements.get(id) || null;
   }
 
-  async getByEventId(eventId: string): Promise<MovimientoStock | null> {
-    const movId = this.eventIndex.get(eventId);
-    if (!movId) return null;
-    return this.movements.get(movId) || null;
+  async getByEventId(empresaId: string, eventId: string): Promise<MovimientoStock | null> {
+    const list = Array.from(this.movements.values());
+    return list.find(m => m.empresaId === empresaId && m.eventId === eventId) || null;
   }
 
   async getByOrigen(origenModulo: string, origenId: string): Promise<MovimientoStock[]> {

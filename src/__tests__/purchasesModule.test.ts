@@ -804,6 +804,7 @@ describe('MÓDULO 5 — COMPRAS & PROVEEDORES', () => {
       items: [
         {
           tipo: 'ARTICULO',
+          articuloId: 'art-rep-filtro-aire',
           descripcion: 'Filtro Purificador',
           cantidad: 5,
           unidadMedida: 'UNIDAD',
@@ -1331,6 +1332,7 @@ describe('MÓDULO 5 — COMPRAS & PROVEEDORES', () => {
       items: [
         {
           tipo: 'ARTICULO',
+          articuloId: 'art-rep-filtro-aceite',
           descripcion: 'Aceite Hidráulico Tambor',
           cantidad: 2,
           unidadMedida: 'UNIDAD',
