@@ -74,6 +74,8 @@ export class FleetAvailabilityService {
       };
     }
 
+    // NOTA ARQUITECTÓNICA: En esta fase el estado RESERVADO actúa como bloqueo general de asignación.
+    // La gestión granular de reservas por franja horaria, obra y ventana temporal se resolverá en Módulo 11 (Programación, Despacho y Logística).
     if (equipo.estadoOperativo === 'RESERVADO') {
       restricciones.push('EQUIPO_RESERVADO');
       return {
@@ -113,12 +115,13 @@ export class FleetAvailabilityService {
 
     // 4. Tipo de equipo requerido
     if (requiredEquipmentType && equipo.tipoEquipo !== requiredEquipmentType) {
+      restricciones.push('TIPO_INCOMPATIBLE');
       return {
         disponible: false,
         bloqueante: true,
-        codigoMotivo: 'CAPACIDAD_INSUFICIENTE',
+        codigoMotivo: 'TIPO_INCOMPATIBLE',
         motivo: `El equipo es de tipo ${equipo.tipoEquipo}, se requería ${requiredEquipmentType}.`,
-        restricciones: ['TIPO_INCOMPATIBLE']
+        restricciones
       };
     }
 

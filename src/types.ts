@@ -513,7 +513,7 @@ export interface Equipo {
 export interface EquipmentAvailabilityResult {
   disponible: boolean;
   bloqueante: boolean;
-  codigoMotivo?: 'OK' | 'FUERA_SERVICIO' | 'EN_TALLER' | 'DOC_BLOQUEANTE_VENCIDO' | 'SEGURO_VENCIDO' | 'ASIGNACION_EN_CURSO' | 'EQUIPO_RESERVADO' | 'CAPACIDAD_INSUFICIENTE' | 'NO_EXISTE' | 'INACTIVO_ADMINISTRATIVO';
+  codigoMotivo?: 'OK' | 'FUERA_SERVICIO' | 'EN_TALLER' | 'DOC_BLOQUEANTE_VENCIDO' | 'SEGURO_VENCIDO' | 'ASIGNACION_EN_CURSO' | 'EQUIPO_RESERVADO' | 'TIPO_INCOMPATIBLE' | 'CAPACIDAD_INSUFICIENTE' | 'NO_EXISTE' | 'INACTIVO_ADMINISTRATIVO';
   motivo?: string;
   restricciones: string[];
 }

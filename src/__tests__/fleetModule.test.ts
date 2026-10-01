@@ -117,4 +117,13 @@ describe('MÓDULO 2 — FLOTA Y MAQUINARIA OPERATIVA (SUITE DE INTEGRACIÓN & DI
     expect(ultima.valor).toBe(5625);
     expect(ultima.referenciaOrigenId).toBe('OT-101');
   });
+
+  it('Caso 13: Solicitud con tipo de equipo no coincidente retorna código TIPO_INCOMPATIBLE', async () => {
+    // eq-mix-12 es de tipo MIXER. Se consulta si puede utilizarse como CARGADORA
+    const res = await fleetAvailabilityService.canAssignEquipment('eq-mix-12', '2026-09-30T08:00:00', undefined, 'CARGADORA');
+    expect(res.disponible).toBe(false);
+    expect(res.bloqueante).toBe(true);
+    expect(res.codigoMotivo).toBe('TIPO_INCOMPATIBLE');
+    expect(res.motivo).toContain('se requería CARGADORA');
+  });
 });
