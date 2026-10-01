@@ -42,6 +42,8 @@ CREATE TABLE IF NOT EXISTS mant_ordenes_trabajo (
     fecha_inicio_real TIMESTAMPTZ,
     fecha_fin_real TIMESTAMPTZ,
     fecha_cierre TIMESTAMPTZ,
+    fecha_hora_inicio_bloqueo TIMESTAMPTZ,
+    fecha_hora_fin_bloqueo TIMESTAMPTZ,
     horas_parada_equipo NUMERIC(8,2) DEFAULT 0,
     
     -- Lecturas de Contadores al Apertura / Cierre

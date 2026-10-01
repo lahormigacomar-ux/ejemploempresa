@@ -757,6 +757,8 @@ export interface OrdenTrabajo {
   fechaInicioReal?: string;
   fechaFinReal?: string;
   fechaCierre?: string;
+  fechaHoraInicioBloqueo?: string;
+  fechaHoraFinBloqueo?: string;
   horasParadaEquipo: number;
 
   odometroAperturaKm: number;

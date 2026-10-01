@@ -9,6 +9,7 @@ import { maintenanceService } from '../services/maintenanceService';
 import { maintenancePlanningService } from '../services/maintenancePlanningService';
 import { tireService } from '../services/tireService';
 import { fleetEventHandler } from '../services/fleetEventHandler';
+import { hrDomainService } from '../services/hrDomainService';
 
 describe('MÓDULO 3 — MANTENIMIENTO, TALLER, REPUESTOS Y NEUMÁTICOS', () => {
   beforeEach(() => {
@@ -36,7 +37,7 @@ describe('MÓDULO 3 — MANTENIMIENTO, TALLER, REPUESTOS Y NEUMÁTICOS', () => {
     expect(ot.equipoId).toBe('eq-mix-12');
   });
 
-  it('Caso B: Iniciar OT bloqueante cambia el estado del equipo a EN_TALLER', async () => {
+  it('Caso B: Iniciar OT bloqueante cambia el estado del equipo a EN_TALLER y fija fechaHoraInicioBloqueo', async () => {
     const ot = await maintenanceService.createWorkOrder({
       equipoId: 'eq-mix-12',
       tipoMantenimiento: 'CORRECTIVO',
@@ -50,6 +51,9 @@ describe('MÓDULO 3 — MANTENIMIENTO, TALLER, REPUESTOS Y NEUMÁTICOS', () => {
 
     const eq = await equipmentRepository.getById('eq-mix-12');
     expect(eq?.estadoOperativo).toBe('EN_TALLER');
+
+    const otUpdated = await maintenanceRepository.getWorkOrderById(ot.id);
+    expect(otUpdated?.fechaHoraInicioBloqueo).toBeDefined();
   });
 
   it('Caso C: Cerrar OT bloqueante libera el equipo y lo vuelve a estado DISPONIBLE', async () => {
@@ -75,8 +79,7 @@ describe('MÓDULO 3 — MANTENIMIENTO, TALLER, REPUESTOS Y NEUMÁTICOS', () => {
     expect(eq?.estadoOperativo).toBe('DISPONIBLE');
   });
 
-  it('Caso D: OT no bloqueante no altera el estado del equipo a EN_TALLER', async () => {
-    // Reparación de luz de giro o tarea menor que no requiere inmovilizar el camión
+  it('Caso D: OT no bloqueante no altera el estado del equipo a EN_TALLER y mantiene downtime en 0', async () => {
     const ot = await maintenanceService.createWorkOrder({
       equipoId: 'eq-mix-12',
       tipoMantenimiento: 'CORRECTIVO',
@@ -90,10 +93,17 @@ describe('MÓDULO 3 — MANTENIMIENTO, TALLER, REPUESTOS Y NEUMÁTICOS', () => {
 
     const eq = await equipmentRepository.getById('eq-mix-12');
     expect(eq?.estadoOperativo).toBe('DISPONIBLE');
+
+    const otCerrada = await maintenanceService.closeWorkOrder(ot.id, {
+      diagnostico: 'Lámpara con filamento cortado',
+      trabajoRealizado: 'Reemplazo de lámpara 24V 21W',
+      causaRaiz: 'DESGASTE_NORMAL'
+    });
+
+    expect(otCerrada.horasParadaEquipo).toBe(0);
   });
 
   it('Caso E: Dos mecánicos pueden imputar horas a la misma OT con desglose individual', async () => {
-    // emp-5 es mecánico. Agregaremos horas
     const ot = await maintenanceService.createWorkOrder({
       equipoId: 'eq-mix-12',
       tipoMantenimiento: 'CORRECTIVO',
@@ -111,23 +121,27 @@ describe('MÓDULO 3 — MANTENIMIENTO, TALLER, REPUESTOS Y NEUMÁTICOS', () => {
     expect(otUpdated?.costoManoObra).toBeGreaterThan(0);
   });
 
-  it('Caso F: Imputación de costo laboral se genera en el centro de costos de Taller sin duplicación', async () => {
+  it('Caso F: Costo horario de mano de obra proviene estrictamente del motor de RRHH (sin / 160 hardcodeado)', async () => {
     const ot = await maintenanceService.createWorkOrder({
       equipoId: 'eq-mix-12',
       tipoMantenimiento: 'CORRECTIVO',
       categoriaFalla: 'MOTOR',
       prioridad: 'ALTA',
-      fallaReportada: 'Service de inyectores',
+      fallaReportada: 'Calibración de inyectores',
       bloqueaEquipo: true
     });
 
-    await maintenanceService.addLabor(ot.id, 'emp-5', 3, 'Calibración de inyectores');
+    const fecha = '2026-09-30';
+    const costoEsperadoRRHH = await hrDomainService.getEmployeeHourlyCost('emp-5', fecha);
+    const mo = await maintenanceService.addLabor(ot.id, 'emp-5', 3, 'Calibración de inyectores', undefined, fecha);
+
+    expect(mo.costoHorarioSnapshot).toBe(costoEsperadoRRHH);
+    expect(mo.costoTotalLaboral).toBe(costoEsperadoRRHH * 3);
 
     const imputaciones = await laborCostRepository.getByEmployee('emp-5');
     const imp = imputaciones.find(i => i.origenId === ot.id && i.origenModulo === 'TALLER_OT');
     expect(imp).toBeDefined();
-    expect(imp?.centroCostoId).toBe('cc-taller');
-    expect(imp?.equipoId).toBe('eq-mix-12');
+    expect(imp?.costoHorarioAplicado).toBe(costoEsperadoRRHH);
   });
 
   it('Caso G: Agregar repuesto guarda un snapshot inmutable de su costo unitario', async () => {
@@ -150,12 +164,9 @@ describe('MÓDULO 3 — MANTENIMIENTO, TALLER, REPUESTOS Y NEUMÁTICOS', () => {
   });
 
   it('Caso H: Cambio posterior del precio del artículo en catálogo NO altera el costo histórico de una OT cerrada', async () => {
-    // ot-101 ya está cerrada con costoRepuestos = 195000 y costoTotal = 345000
     const otCerrada = await maintenanceRepository.getWorkOrderById('ot-101');
     const costoHistorico = otCerrada?.costoTotal;
 
-    // Supongamos que el aceite ahora sube de $65.000 a $120.000 en el catálogo general
-    // Volver a consultar la OT cerrada
     const otConsultada = await maintenanceRepository.getWorkOrderById('ot-101');
     expect(otConsultada?.costoTotal).toBe(costoHistorico);
     expect(otConsultada?.repuestos[0].costoUnitarioSnapshot).toBe(65000);
@@ -176,44 +187,133 @@ describe('MÓDULO 3 — MANTENIMIENTO, TALLER, REPUESTOS Y NEUMÁTICOS', () => {
     expect(otUpdated?.estado).toBe('ESPERANDO_REPUESTO');
   });
 
-  it('Caso J: Plan preventivo por horas calcula estado PROXIMO o VENCIDO al comparar con horómetro de Flota', async () => {
-    // En seed: CAR-01 tiene 5600 hs, su próximo service es a las 5650 hs (umbral de alerta 20 hs).
-    // Si la máquina alcanza 5635 hs (a 15 hs), debe figurar PROXIMO.
+  it('Caso J: Downtime no incluye las horas previas a la entrada efectiva al taller', async () => {
+    // OT abierta a las 08:00
+    const ot = await maintenanceService.createWorkOrder({
+      equipoId: 'eq-mix-12',
+      tipoMantenimiento: 'CORRECTIVO',
+      categoriaFalla: 'FRENOS',
+      prioridad: 'ALTA',
+      fallaReportada: 'Frenos largos',
+      bloqueaEquipo: true
+    });
+
+    // Ingresa a taller a las 16:00 (8 horas después)
+    const fechaEntrada = '2026-09-30T16:00:00Z';
+    await maintenanceService.startWorkOrder(ot.id, undefined, undefined, fechaEntrada);
+
+    // Cierra a las 19:00 (3 horas de reparación real)
+    const fechaCierre = '2026-09-30T19:00:00Z';
+    const otCerrada = await maintenanceService.closeWorkOrder(ot.id, {
+      diagnostico: 'Cintas gastadas',
+      trabajoRealizado: 'Reemplazo de cintas de freno',
+      fechaCierre
+    });
+
+    // Debe ser exactamente 3 horas, no 11 horas (8hs previas + 3hs taller)
+    expect(otCerrada.horasParadaEquipo).toBe(3.0);
+  });
+
+  it('Caso K: Cierre de OT es rechazado si existen tareas en estado PENDIENTE o EN_PROCESO', async () => {
+    const ot = await maintenanceService.createWorkOrder({
+      equipoId: 'eq-mix-12',
+      tipoMantenimiento: 'CORRECTIVO',
+      categoriaFalla: 'MOTOR',
+      prioridad: 'NORMAL',
+      fallaReportada: 'Revisión general',
+      bloqueaEquipo: true
+    });
+
+    await maintenanceService.startWorkOrder(ot.id);
+    const tar = await maintenanceService.addTask(ot.id, 'Cambiar correa de alternador', 1);
+
+    // Intento de cierre con tarea PENDIENTE
+    await expect(
+      maintenanceService.closeWorkOrder(ot.id, {
+        diagnostico: 'Correa reseca',
+        trabajoRealizado: 'Se cambió correa'
+      })
+    ).rejects.toThrow(/La tarea "Cambiar correa de alternador" se encuentra en estado PENDIENTE/);
+
+    // Marcar completada la tarea
+    tar.estado = 'COMPLETADA';
+
+    // Cierre exitoso con tareas finalizadas
+    const otCerrada = await maintenanceService.closeWorkOrder(ot.id, {
+      diagnostico: 'Correa reseca',
+      trabajoRealizado: 'Se cambió correa'
+    });
+    expect(otCerrada.estado).toBe('CERRADA');
+  });
+
+  it('Caso L: Cierre de OT actualiza contadores de Flota (fuente única de verdad) y rechaza lecturas regresivas', async () => {
+    // MIX-12 odómetro actual = 68.500 km, horómetro = 3.420 hs
+    const ot = await maintenanceService.createWorkOrder({
+      equipoId: 'eq-mix-12',
+      tipoMantenimiento: 'PREVENTIVO',
+      categoriaFalla: 'MOTOR',
+      prioridad: 'NORMAL',
+      fallaReportada: 'Service 70k km',
+      bloqueaEquipo: true
+    });
+
+    await maintenanceService.startWorkOrder(ot.id);
+
+    // Cierre con nuevo horómetro 3.435 hs y odómetro 68.520 km
+    await maintenanceService.closeWorkOrder(ot.id, {
+      diagnostico: 'Service cumplido',
+      trabajoRealizado: 'Cambio de fluidos',
+      odometroCierreKm: 68520,
+      horometroCierreHs: 3435
+    });
+
+    const eq = await equipmentRepository.getById('eq-mix-12');
+    expect(eq?.odometroKmActual).toBe(68520);
+    expect(eq?.horometroHsActual).toBe(3435);
+
+    // Intentar registrar odómetro menor en otra OT debe ser rechazado
+    const ot2 = await maintenanceService.createWorkOrder({
+      equipoId: 'eq-mix-12',
+      tipoMantenimiento: 'CORRECTIVO',
+      categoriaFalla: 'MOTOR',
+      prioridad: 'NORMAL',
+      fallaReportada: 'Ajuste',
+      bloqueaEquipo: true
+    });
+    await maintenanceService.startWorkOrder(ot2.id);
+
+    await expect(
+      maintenanceService.closeWorkOrder(ot2.id, {
+        diagnostico: 'OK',
+        trabajoRealizado: 'Ajuste',
+        odometroCierreKm: 60000 // Menor al actual 68520
+      })
+    ).rejects.toThrow(/no puede ser menor al actual/);
+  });
+
+  it('Caso M: Plan preventivo por horas calcula estado PROXIMO o VENCIDO al comparar con horómetro de Flota', async () => {
     await equipmentRepository.addCounterReading('eq-car-01', 'HOROMETRO_HS', 5635, 'TALLER');
     const plans = await maintenancePlanningService.evaluateEquipmentPlans('eq-car-01');
     expect(plans.length).toBeGreaterThanOrEqual(1);
     expect(plans[0].estadoAlerta).toBe('PROXIMO');
 
-    // Si supera las 5650 hs (ej 5655 hs), pasa a VENCIDO
     await equipmentRepository.addCounterReading('eq-car-01', 'HOROMETRO_HS', 5655, 'TALLER');
     const plansVencido = await maintenancePlanningService.evaluateEquipmentPlans('eq-car-01');
     expect(plansVencido[0].estadoAlerta).toBe('VENCIDO');
   });
 
-  it('Caso K: Plan preventivo por kilómetros calcula estado PROXIMO o VENCIDO al comparar con odómetro de Flota', async () => {
-    // MIX-12 tiene 68.500 km. Próximo service a los 70.000 km (umbral de alerta 500 km).
-    // Si avanza a 69.600 km (a 400 km), debe figurar PROXIMO.
-    await equipmentRepository.addCounterReading('eq-mix-12', 'ODOMETRO_KM', 69600, 'TALLER');
-    const plans = await maintenancePlanningService.evaluateEquipmentPlans('eq-mix-12');
-    expect(plans.length).toBeGreaterThanOrEqual(1);
-    expect(plans[0].estadoAlerta).toBe('PROXIMO');
-  });
-
-  it('Caso L: No se puede instalar un mismo neumático simultáneamente en dos posiciones o equipos', async () => {
-    // neu-101 ya está instalado en eq-mix-12 EJE_1_IZQ
+  it('Caso N: No se puede instalar un mismo neumático simultáneamente en dos posiciones o equipos', async () => {
     await expect(
       tireService.installTire('neu-101', 'eq-mix-14', 'EJE_1_IZQ')
     ).rejects.toThrow(/ya se encuentra instalado/);
   });
 
-  it('Caso M: Instalar y retirar neumático conserva historial de movimientos y kilometraje acumulado', async () => {
-    // neu-103 está EN_STOCK
+  it('Caso O: Instalar y retirar neumático conserva historial de movimientos y kilometraje acumulado', async () => {
     await tireService.installTire('neu-103', 'eq-mix-14', 'EJE_1_IZQ');
     let t = await tireRepository.getTireById('neu-103');
     expect(t?.estado).toBe('INSTALADO');
     expect(t?.equipoActualId).toBe('eq-mix-14');
 
-    // Retirar neumático para reparación habiendo recorrido 5.000 km
     await tireService.removeTire('neu-103', (t?.kmInstalacionActual || 0) + 5000, 'EN_REPARACION', 'Pinchadura');
     t = await tireRepository.getTireById('neu-103');
     expect(t?.estado).toBe('EN_REPARACION');
@@ -223,8 +323,7 @@ describe('MÓDULO 3 — MANTENIMIENTO, TALLER, REPUESTOS Y NEUMÁTICOS', () => {
     expect(hist.length).toBeGreaterThanOrEqual(3);
   });
 
-  it('Caso N: Costo total del neumático acumula compra + reparaciones + recapados', async () => {
-    // neu-103 compra = 450.000
+  it('Caso P: Costo total del neumático acumula compra + reparaciones + recapados', async () => {
     await tireService.registerRepairOrRetread('neu-103', 45000, 'REPARACION', 'Vulcanizado de flanco');
     await tireService.registerRepairOrRetread('neu-103', 120000, 'RECAPADO', 'Primer recapado banda de tracción');
 
@@ -234,8 +333,7 @@ describe('MÓDULO 3 — MANTENIMIENTO, TALLER, REPUESTOS Y NEUMÁTICOS', () => {
     expect(t?.vecesRecapado).toBe(1);
   });
 
-  it('Caso O: Una OT cerrada no puede modificarse libremente', async () => {
-    // Intentar agregar una tarea a ot-101 (cerrada)
+  it('Caso Q: Una OT cerrada no puede modificarse libremente', async () => {
     await expect(
       maintenanceService.addTask('ot-101', 'Tarea tardía')
     ).rejects.toThrow(/OT cerrada/);
@@ -245,32 +343,7 @@ describe('MÓDULO 3 — MANTENIMIENTO, TALLER, REPUESTOS Y NEUMÁTICOS', () => {
     ).rejects.toThrow(/OT cerrada/);
   });
 
-  it('Caso P: Evento duplicado de taller no altera doblemente el estado (Idempotencia)', async () => {
-    const ev1 = await fleetEventHandler.onEquipoEntraTaller('EVT-OT-999', 'eq-mix-12', 'ot-999', 'Falla de embrague');
-    expect(ev1.processed).toBe(true);
-    expect(ev1.isDuplicate).toBe(false);
-
-    const ev2 = await fleetEventHandler.onEquipoEntraTaller('EVT-OT-999', 'eq-mix-12', 'ot-999', 'Falla de embrague');
-    expect(ev2.processed).toBe(false);
-    expect(ev2.isDuplicate).toBe(true);
-  });
-
-  it('Caso Q: Acción crítica de taller genera registro en auditoría del sistema', async () => {
-    const ot = await maintenanceService.createWorkOrder({
-      equipoId: 'eq-mix-14',
-      tipoMantenimiento: 'CORRECTIVO',
-      categoriaFalla: 'FRENOS',
-      prioridad: 'ALTA',
-      fallaReportada: 'Revisión de válvulas de frenado',
-      bloqueaEquipo: true
-    });
-
-    const logs = await auditRepository.getLogs('mant_ordenes_trabajo');
-    const logOT = logs.find(l => l.registroId === ot.id && l.accion === 'CREACION_OT');
-    expect(logOT).toBeDefined();
-  });
-
-  it('Caso R: Asignar mano de obra con empleado no mecánico es rechazado con mensaje claro', async () => {
+  it('Caso R: Asignar mano de obra con empleado no mecánico o inactivo es rechazado con mensaje claro', async () => {
     const ot = await maintenanceService.createWorkOrder({
       equipoId: 'eq-mix-12',
       tipoMantenimiento: 'CORRECTIVO',

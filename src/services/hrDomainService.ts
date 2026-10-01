@@ -357,6 +357,26 @@ export class HRDomainService {
     await payrollRepository.saveLiquidacion(liquidacion);
     return liquidacion;
   }
+
+  /**
+   * 3. Contrato de Costo Horario Empresa para Módulos de Operaciones (Taller, Logística, Áridos)
+   * Devuelve el costo real por hora considerando sueldo histórico, cargas patronales y ART vigentes.
+   */
+  async getEmployeeHourlyCost(empleadoId: string, fecha: string): Promise<number> {
+    const empleado = await employeeRepository.getById(empleadoId);
+    if (!empleado) throw new Error(`Empleado ${empleadoId} no encontrado`);
+
+    const reglaVigente = await payrollRepository.getReglaVigente(fecha);
+    const sueldoHistorico = await employeeRepository.getHistoricalSalary(empleadoId, fecha);
+
+    // Costo total empresa = sueldo * (1 + cargas patronales + ART)
+    const costoEmpresaMensual = Math.round(
+      sueldoHistorico * (1 + reglaVigente.coefCargasPatronales + reglaVigente.coefART)
+    );
+
+    const costoHorario = Math.round(costoEmpresaMensual / reglaVigente.horasBaseMensuales);
+    return costoHorario;
+  }
 }
 
 export const hrDomainService = new HRDomainService();
