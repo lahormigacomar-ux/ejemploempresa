@@ -1,17 +1,24 @@
 -- ====================================================================
 -- MIGRACIÓN 001: MÓDULO 1 - PERSONAL / RRHH / ASISTENCIA / SUELDOS
 -- Base de datos: PostgreSQL / Supabase
+-- Arquitectura: Multiempresa / Multiplanta
 -- ====================================================================
+
+-- Documentación de Relaciones Maestras Externas:
+-- rrhh_empleados.empresa_id            -> empresas(id)
+-- rrhh_empleados.planta_habitual_id    -> plantas(id)
+-- rrhh_empleados.centro_costo_habitual_id -> centros_costo(id)
+-- rrhh_imputaciones_costo_laboral.equipo_id -> equipos(id)
 
 -- 1. Maestros y Legajos
 CREATE TABLE IF NOT EXISTS rrhh_empleados (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     empresa_id UUID NOT NULL,
-    legajo VARCHAR(20) NOT NULL UNIQUE,
+    legajo VARCHAR(20) NOT NULL,
     nombre VARCHAR(100) NOT NULL,
     apellido VARCHAR(100) NOT NULL,
-    dni VARCHAR(20) NOT NULL UNIQUE,
-    cuil VARCHAR(20) NOT NULL UNIQUE,
+    dni VARCHAR(20) NOT NULL,
+    cuil VARCHAR(20) NOT NULL,
     fecha_nacimiento DATE,
     fecha_ingreso DATE NOT NULL,
     fecha_antiguedad_reconocida DATE,
@@ -30,7 +37,9 @@ CREATE TABLE IF NOT EXISTS rrhh_empleados (
     contacto_emergencia TEXT,
     telefono_emergencia VARCHAR(50),
     created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW()
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+    CONSTRAINT uq_rrhh_empleado_empresa_legajo UNIQUE (empresa_id, legajo),
+    CONSTRAINT uq_rrhh_empleado_empresa_cuil UNIQUE (empresa_id, cuil)
 );
 
 CREATE TABLE IF NOT EXISTS rrhh_empleado_roles (
@@ -82,13 +91,15 @@ CREATE TABLE IF NOT EXISTS rrhh_habilitaciones_equipos (
 -- 2. Asistencia, Turnos y Jornadas
 CREATE TABLE IF NOT EXISTS rrhh_turnos (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    codigo VARCHAR(20) NOT NULL UNIQUE,
+    empresa_id UUID NOT NULL,
+    codigo VARCHAR(20) NOT NULL,
     nombre VARCHAR(100) NOT NULL,
     hora_entrada TIME NOT NULL,
     hora_salida TIME NOT NULL,
     cruza_medianoche BOOLEAN DEFAULT false,
     tolerancia_tardanza_min INTEGER DEFAULT 10,
-    activo BOOLEAN DEFAULT true
+    activo BOOLEAN DEFAULT true,
+    CONSTRAINT uq_rrhh_turnos_empresa_codigo UNIQUE (empresa_id, codigo)
 );
 
 CREATE TABLE IF NOT EXISTS rrhh_fichadas (
@@ -183,7 +194,8 @@ CREATE TABLE IF NOT EXISTS rrhh_prestamos_cuotas (
 -- 5. Configuración de Conceptos y Reglas Versionadas
 CREATE TABLE IF NOT EXISTS rrhh_conceptos_liquidacion (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    codigo VARCHAR(20) NOT NULL UNIQUE,
+    empresa_id UUID, -- NULL = Concepto estándar global, UUID = Concepto específico de empresa
+    codigo VARCHAR(20) NOT NULL,
     nombre VARCHAR(100) NOT NULL,
     tipo VARCHAR(30) NOT NULL CHECK (tipo IN ('REMUNERATIVO', 'NO_REMUNERATIVO', 'DESCUENTO', 'CONTRIBUCION_PATRONAL')),
     modo_calculo VARCHAR(30) NOT NULL CHECK (modo_calculo IN ('PORCENTAJE', 'FIJO', 'FORMULA', 'DIARIO_HORA')),
@@ -195,11 +207,13 @@ CREATE TABLE IF NOT EXISTS rrhh_conceptos_liquidacion (
     convenio VARCHAR(100),
     impacta_sac BOOLEAN DEFAULT true,
     impacta_vacaciones BOOLEAN DEFAULT true,
-    activo BOOLEAN DEFAULT true
+    activo BOOLEAN DEFAULT true,
+    CONSTRAINT uq_rrhh_conceptos_empresa_codigo UNIQUE (empresa_id, codigo)
 );
 
 CREATE TABLE IF NOT EXISTS rrhh_reglas_salariales_versiones (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    empresa_id UUID,
     version VARCHAR(20) NOT NULL,
     vigencia_desde DATE NOT NULL,
     vigencia_hasta DATE,
@@ -212,6 +226,7 @@ CREATE TABLE IF NOT EXISTS rrhh_reglas_salariales_versiones (
 -- 6. Liquidaciones, Snapshots y Pagos
 CREATE TABLE IF NOT EXISTS rrhh_liquidaciones (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    empresa_id UUID NOT NULL,
     periodo VARCHAR(7) NOT NULL,
     tipo VARCHAR(30) NOT NULL CHECK (tipo IN ('MENSUAL', 'QUINCENAL', 'SAC', 'VACACIONES', 'FINAL', 'ESPECIAL')),
     empleado_id UUID NOT NULL REFERENCES rrhh_empleados(id),
@@ -225,7 +240,7 @@ CREATE TABLE IF NOT EXISTS rrhh_liquidaciones (
     estado VARCHAR(30) DEFAULT 'BORRADOR' CHECK (estado IN ('BORRADOR', 'CALCULADA', 'REVISADA', 'APROBADA', 'CERRADA', 'PAGADA', 'ANULADA')),
     fecha_cierre TIMESTAMPTZ,
     usuario_cierre UUID,
-    UNIQUE(periodo, tipo, empleado_id)
+    CONSTRAINT uq_rrhh_liquidaciones_empresa_periodo_tipo_emp UNIQUE(empresa_id, periodo, tipo, empleado_id)
 );
 
 CREATE TABLE IF NOT EXISTS rrhh_liquidacion_detalles (
@@ -253,6 +268,7 @@ CREATE TABLE IF NOT EXISTS rrhh_liquidacion_snapshots (
 -- 7. Imputación Laboral Idempotente
 CREATE TABLE IF NOT EXISTS rrhh_imputaciones_costo_laboral (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    empresa_id UUID NOT NULL,
     event_id VARCHAR(100) NOT NULL UNIQUE,
     empleado_id UUID NOT NULL REFERENCES rrhh_empleados(id),
     fecha DATE NOT NULL,
@@ -270,6 +286,7 @@ CREATE TABLE IF NOT EXISTS rrhh_imputaciones_costo_laboral (
 -- 8. Auditoría del Sistema
 CREATE TABLE IF NOT EXISTS auditoria_sistema (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    empresa_id UUID,
     fecha_hora TIMESTAMPTZ DEFAULT NOW(),
     usuario_id UUID,
     usuario_nombre VARCHAR(100),
