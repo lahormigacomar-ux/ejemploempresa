@@ -52,6 +52,10 @@ class LaborCostRepository {
     });
   }
 
+  async getByEmployee(empleadoId: string): Promise<ImputacionCostoLaboral[]> {
+    return Array.from(this.allocations.values()).filter(a => a.empleadoId === empleadoId);
+  }
+
   async getAllocationsBySource(origenModulo: string, origenId: string): Promise<ImputacionCostoLaboral[]> {
     return Array.from(this.allocations.values()).filter(
       a => a.origenModulo === origenModulo && a.origenId === origenId

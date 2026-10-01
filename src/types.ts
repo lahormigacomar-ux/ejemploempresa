@@ -619,6 +619,274 @@ export interface ProbetaLab {
   resultado: 'aprobado' | 'observado' | 'rechazado';
 }
 
+// ==========================================
+// MÓDULO 3: MANTENIMIENTO, TALLER & NEUMÁTICOS
+// ==========================================
+
+export type TipoMantenimiento = 'PREVENTIVO' | 'CORRECTIVO' | 'EMERGENCIA' | 'INSPECCION' | 'CAMPAÑA';
+
+export type CategoriaFalla =
+  | 'MOTOR'
+  | 'TRANSMISION'
+  | 'FRENOS'
+  | 'ELECTRICO'
+  | 'HIDRAULICO'
+  | 'NEUMATICOS'
+  | 'TAMBOR'
+  | 'CHASIS'
+  | 'SUSPENSION'
+  | 'DIRECCION'
+  | 'REFRIGERACION'
+  | 'COMBUSTIBLE'
+  | 'OTRO';
+
+export type PrioridadOT = 'BAJA' | 'NORMAL' | 'ALTA' | 'URGENTE' | 'CRITICA';
+
+export type EstadoOT =
+  | 'BORRADOR'
+  | 'ABIERTA'
+  | 'DIAGNOSTICO'
+  | 'ESPERANDO_REPUESTO'
+  | 'PROGRAMADA'
+  | 'EN_PROCESO'
+  | 'PAUSADA'
+  | 'TERMINADA'
+  | 'CERRADA'
+  | 'CANCELADA';
+
+export type CausaRaiz =
+  | 'DESGASTE_NORMAL'
+  | 'FALTA_MANTENIMIENTO'
+  | 'MAL_USO'
+  | 'ROTURA_ACCIDENTAL'
+  | 'FALLA_COMPONENTE'
+  | 'CONTAMINACION'
+  | 'SOBRECARGA'
+  | 'DEFECTO_FABRICA'
+  | 'OTRO';
+
+export interface TareaOrdenTrabajo {
+  id: string;
+  ordenTrabajoId: string;
+  descripcion: string;
+  mecanicoAsignadoId?: string;
+  horasEstimadas: number;
+  horasReales: number;
+  estado: 'PENDIENTE' | 'EN_PROCESO' | 'COMPLETADA' | 'CANCELADA';
+  orden: number;
+  observaciones?: string;
+}
+
+export interface ManoObraOT {
+  id: string;
+  ordenTrabajoId: string;
+  empleadoId: string;
+  mecanicoNombreSnapshot?: string;
+  tareaId?: string;
+  fecha: string;
+  horaInicio?: string;
+  horaFin?: string;
+  horasTrabajadas: number;
+  tipoTrabajo: string;
+  costoHorarioSnapshot: number;
+  costoTotalLaboral: number;
+  observaciones?: string;
+}
+
+export interface ConsumoRepuestoOT {
+  id: string;
+  ordenTrabajoId: string;
+  articuloId: string;
+  codigoArticuloSnapshot?: string;
+  descripcionSnapshot: string;
+  cantidad: number;
+  unidadMedida: string;
+  costoUnitarioSnapshot: number;
+  costoTotal: number;
+  depositoId?: string;
+  estadoSolicitud: 'SOLICITADO' | 'RESERVADO' | 'ENTREGADO' | 'CONSUMIDO' | 'DEVUELTO' | 'CANCELADO';
+  fecha: string;
+  usuarioRegistro?: string;
+}
+
+export interface ServicioExternoOT {
+  id: string;
+  ordenTrabajoId: string;
+  proveedorId?: string;
+  proveedorNombreSnapshot: string;
+  descripcionServicio: string;
+  numeroComprobante?: string;
+  fecha: string;
+  importe: number;
+  observaciones?: string;
+}
+
+export interface ChecklistItem {
+  id: string;
+  checklistId: string;
+  itemNombre: string;
+  estado: 'OK' | 'OBSERVADO' | 'REQUIERE_REPARACION' | 'NO_APLICA';
+  observacion?: string;
+  tareaGeneradaId?: string;
+}
+
+export interface ChecklistMantenimiento {
+  id: string;
+  ordenTrabajoId: string;
+  titulo: string;
+  fechaInspeccion: string;
+  inspectorId?: string;
+  resultadoGeneral: 'APROBADO' | 'CON_OBSERVACIONES' | 'RECHAZADO';
+  observaciones?: string;
+  items: ChecklistItem[];
+}
+
+export interface OrdenTrabajo {
+  id: string;
+  empresaId: string;
+  numeroOT: string; // ej: OT-000101
+  equipoId: string; // FK -> flota_equipos(id)
+  tipoMantenimiento: TipoMantenimiento;
+  categoriaFalla: CategoriaFalla;
+  prioridad: PrioridadOT;
+  estado: EstadoOT;
+
+  fechaSolicitud: string;
+  fechaApertura: string;
+  fechaProgramada?: string;
+  fechaInicioReal?: string;
+  fechaFinReal?: string;
+  fechaCierre?: string;
+  horasParadaEquipo: number;
+
+  odometroAperturaKm: number;
+  horometroAperturaHs: number;
+  odometroCierreKm?: number;
+  horometroCierreHs?: number;
+
+  fallaReportada: string;
+  diagnostico?: string;
+  trabajoRealizado?: string;
+  causaRaiz?: CausaRaiz;
+  observaciones?: string;
+
+  solicitanteId?: string;
+  responsableTallerId?: string;
+  centroCostoId: string;
+  bloqueaEquipo: boolean;
+
+  costoRepuestos: number;
+  costoManoObra: number;
+  costoServiciosTerceros: number;
+  otrosCostos: number;
+  costoTotal: number;
+
+  tareas: TareaOrdenTrabajo[];
+  personal: ManoObraOT[];
+  repuestos: ConsumoRepuestoOT[];
+  serviciosExternos: ServicioExternoOT[];
+  checklist?: ChecklistMantenimiento;
+
+  usuarioCreacion?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PlanMantenimiento {
+  id: string;
+  empresaId: string;
+  codigo: string;
+  nombre: string;
+  tipoEquipoAplicable?: string;
+  frecuenciaKm?: number;
+  frecuenciaHoras?: number;
+  frecuenciaMeses?: number;
+  umbralAlertaKm: number;
+  umbralAlertaHoras: number;
+  umbralAlertaDias: number;
+  descripcion?: string;
+  activo: boolean;
+}
+
+export interface EquipoPlanMantenimiento {
+  id: string;
+  equipoId: string;
+  planId: string;
+  plan?: PlanMantenimiento;
+  ultimoServiceKm: number;
+  ultimoServiceHoras: number;
+  ultimoServiceFecha?: string;
+  proximoServiceKm?: number;
+  proximoServiceHoras?: number;
+  proximoServiceFecha?: string;
+  estadoAlerta: 'OK' | 'PROXIMO' | 'VENCIDO';
+  activo: boolean;
+}
+
+export type EstadoNeumatico = 'EN_STOCK' | 'INSTALADO' | 'EN_REPARACION' | 'RECAPADO' | 'BAJA';
+
+export interface Neumatico {
+  id: string;
+  empresaId: string;
+  codigoInterno: string; // ej: NEU-102
+  marca: string;
+  modelo: string;
+  medida: string;
+  numeroSerie?: string;
+  dot?: string;
+  estado: EstadoNeumatico;
+  fechaCompra: string;
+  costoCompra: number;
+  costoAcumuladoReparaciones: number;
+  costoTotalAcumulado: number;
+  kmActualesTotales: number;
+  profundidadDibujoMm: number;
+  vecesRecapado: number;
+  proveedorId?: string;
+
+  equipoActualId?: string;
+  posicionActual?: string;
+  fechaInstalacionActual?: string;
+  kmInstalacionActual?: number;
+  observaciones?: string;
+}
+
+export interface MovimientoNeumatico {
+  id: string;
+  neumaticoId: string;
+  equipoId?: string;
+  tipoMovimiento:
+    | 'INGRESO_COMPRA'
+    | 'INSTALACION'
+    | 'ROTACION'
+    | 'DESMONTE'
+    | 'ENVIO_REPARACION'
+    | 'RETORNO_REPARACION'
+    | 'ENVIO_RECAPADO'
+    | 'RETORNO_RECAPADO'
+    | 'BAJA';
+  posicionOrigen?: string;
+  posicionDestino?: string;
+  fecha: string;
+  kmEquipo: number;
+  costoAsociado: number;
+  motivo?: string;
+  usuarioRegistro?: string;
+}
+
+export interface MedicionNeumatico {
+  id: string;
+  neumaticoId: string;
+  fecha: string;
+  kmLectura: number;
+  presionPsi?: number;
+  profundidadDibujoMm: number;
+  desgasteIrregular: boolean;
+  observaciones?: string;
+  inspectorId?: string;
+}
+
+// Compatibilidad Legacy
 export interface OrdenMantenimiento {
   id: string;
   equipoId: string;

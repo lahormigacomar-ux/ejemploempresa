@@ -4,6 +4,7 @@ import {
   Layers,
   Users,
   Truck,
+  Wrench,
   Box,
   ShoppingCart,
   MapPin,
@@ -20,6 +21,7 @@ export type ActiveTab =
   | 'masters'
   | 'personnel'
   | 'fleet'
+  | 'maintenance'
   | 'stock'
   | 'sales'
   | 'logistics'
@@ -40,7 +42,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab }) => 
     { id: 'dashboard', label: 'Tablero Gerencial', icon: <LayoutDashboard className="w-4 h-4" /> },
     { id: 'masters', label: 'Maestros & C. Costo', icon: <Layers className="w-4 h-4" /> },
     { id: 'personnel', label: 'Personal & Sueldos', icon: <Users className="w-4 h-4" />, badge: 'ARCA' },
-    { id: 'fleet', label: 'Flota & Taller', icon: <Truck className="w-4 h-4" /> },
+    { id: 'fleet', label: 'Flota & Maquinaria', icon: <Truck className="w-4 h-4" /> },
+    { id: 'maintenance', label: 'Taller & Mantenimiento', icon: <Wrench className="w-4 h-4" />, badge: 'OT' },
     { id: 'stock', label: 'Stock & Áridos (A/B/C)', icon: <Box className="w-4 h-4" /> },
     { id: 'sales', label: 'Ventas & Pedidos', icon: <ShoppingCart className="w-4 h-4" /> },
     { id: 'logistics', label: 'Logística & GPS', icon: <MapPin className="w-4 h-4" />, badge: 'OR-Tools' },
