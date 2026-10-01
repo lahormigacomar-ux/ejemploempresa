@@ -42,44 +42,67 @@ export type RolPersonal =
   | 'otro';
 
 export interface HabilitacionEquipo {
-  equipoTipoOrId: string; // e.g. 'mixer', 'cargadora', 'bomba'
+  equipoTipo: string; // 'mixer', 'cargadora', 'bomba', etc.
   habilitado: boolean;
   fechaVencimiento?: string;
+  certificadoNro?: string;
 }
 
 export interface DocumentoEmpleado {
   id: string;
+  empleadoId: string;
   tipo: 'dni' | 'cuil' | 'licencia' | 'linti' | 'psicofisico' | 'art' | 'capacitacion' | 'contrato' | 'otro';
   numero: string;
   fechaEmision: string;
-  fechaVencimiento: string;
+  fechaVencimiento?: string;
   archivoUrl?: string;
   estado: 'vigente' | 'proximo_vencimiento' | 'vencido';
   bloqueanteOperativo: boolean;
+  observaciones?: string;
+}
+
+export interface HistorialLaboral {
+  id: string;
+  empleadoId: string;
+  fechaVigenciaDesde: string;
+  fechaVigenciaHasta?: string;
+  sueldoBasico: number;
+  categoria: string;
+  puesto: string;
+  centroCostoId?: string;
+  plantaId?: string;
+  motivoCambio: string;
+  usuarioRegistro?: string;
+  createdAt: string;
 }
 
 export interface Empleado {
   id: string;
+  empresaId: string;
   legajo: string;
   nombre: string;
   apellido: string;
   dni: string;
   cuil: string;
-  roles: RolPersonal[];
+  fechaNacimiento?: string;
+  fechaIngreso: string;
+  fechaAntiguedadReconocida?: string;
+  fechaEgreso?: string;
+  motivoEgreso?: string;
+  estado: 'ACTIVO' | 'LICENCIA' | 'VACACIONES' | 'SUSPENDIDO' | 'BAJA';
   categoria: string;
   convenio: string;
-  fechaIngreso: string;
-  telefono: string;
-  email: string;
-  domicilio: string;
-  contactoEmergencia: string;
-  telefonoEmergencia: string;
-  estado: 'activo' | 'licencia' | 'vacaciones' | 'suspendido' | 'baja';
+  plantaHabitualId?: string;
+  centroCostoHabitualId?: string;
+  banco?: string;
+  cbuAlias?: string;
+  telefono?: string;
+  email?: string;
+  domicilio?: string;
+  contactoEmergencia?: string;
+  telefonoEmergencia?: string;
   sueldoBasico: number;
-  centroCostoHabitualId: string;
-  banco: string;
-  cbu: string;
-  // Habilitaciones específicas
+  roles: RolPersonal[];
   licenciaConducir?: {
     nro: string;
     categoria: string;
@@ -91,61 +114,151 @@ export interface Empleado {
   documentos: DocumentoEmpleado[];
 }
 
+export interface TurnoLaboral {
+  id: string;
+  codigo: string;
+  nombre: string;
+  horaEntrada: string; // '06:00'
+  horaSalida: string; // '14:00'
+  cruzaMedianoche: boolean;
+  toleranciaTardanzaMin: number;
+  activo: boolean;
+}
+
 export interface FichadaAsistencia {
   id: string;
   empleadoId: string;
   fecha: string;
-  tipo: 'entrada' | 'salida' | 'inicio_descanso' | 'fin_descanso';
   hora: string;
-  origen: 'manual' | 'fichador' | 'app';
-  usuarioRegistro: string;
+  tipo: 'ENTRADA' | 'SALIDA' | 'INICIO_DESCANSO' | 'FIN_DESCANSO';
+  origen: 'MANUAL' | 'RELOJ_BIOMETRICO' | 'APP_CHOFER';
+  usuarioRegistro?: string;
+  createdAt?: string;
 }
 
 export interface JornadaLaboral {
   id: string;
   empleadoId: string;
   fecha: string;
+  turnoId?: string;
   horasPresencia: number;
+  horasDescanso: number;
   horasNormales: number;
   horasExtra50: number;
   horasExtra100: number;
+  horasNocturnas: number;
   tardanzaMinutos: number;
-  estado: 'calculada' | 'aprobada' | 'observada';
+  estado: 'CALCULADA' | 'REVISADA' | 'APROBADA' | 'OBSERVADA';
+}
+
+export interface HoraExtraRegistro {
+  id: string;
+  jornadaId?: string;
+  empleadoId: string;
+  fecha: string;
+  horas: number;
+  tipo: 'EXTRA_50' | 'EXTRA_100' | 'NOCTURNA_EXTRA';
+  estado: 'CALCULADA' | 'PENDIENTE_APROBACION' | 'APROBADA' | 'RECHAZADA';
+  responsableAprobacion?: string;
+  fechaAprobacion?: string;
+  motivoRechazo?: string;
 }
 
 export interface NovedadPersonal {
   id: string;
   empleadoId: string;
-  tipo: 'ausencia' | 'enfermedad' | 'accidente' | 'vacaciones' | 'licencia' | 'tardanza' | 'premio' | 'descuento';
-  desde: string;
-  hasta: string;
-  observaciones: string;
-  estado: 'solicitada' | 'aprobada' | 'rechazada';
+  tipo: 'VACACIONES' | 'LICENCIA_MEDICA' | 'ART_ACCIDENTE' | 'ESTUDIO' | 'SUSPENSION' | 'FRANCO' | 'OTRO';
+  fechaDesde: string;
+  fechaHasta: string;
+  conGoceSueldo: boolean;
+  diasTotales: number;
+  documentoAdjuntoUrl?: string;
+  observaciones?: string;
+  estado: 'SOLICITADA' | 'APROBADA' | 'RECHAZADA' | 'TOMADA';
+  usuarioAprobacion?: string;
 }
 
-export interface AdelantoPrestamo {
+export interface Adelanto {
   id: string;
   empleadoId: string;
-  tipo: 'adelanto' | 'prestamo';
-  importeTotal: number;
-  cuotasTotal: number;
-  cuotaActual: number;
+  fechaSolicitud: string;
+  importe: number;
+  motivo?: string;
+  estado: 'SOLICITADO' | 'APROBADO' | 'PAGADO' | 'DESCONTADO' | 'ANULADO';
+  liquidacionId?: string;
+  fechaPago?: string;
+  usuarioAprobacion?: string;
+}
+
+export interface PrestamoCuota {
+  id: string;
+  prestamoId: string;
+  numeroCuota: number;
+  importe: number;
+  periodoDescuento: string; // 'YYYY-MM'
+  estado: 'PENDIENTE' | 'DESCONTADA' | 'CANCELADA_ANTICIPADA';
+  liquidacionId?: string;
+}
+
+export interface Prestamo {
+  id: string;
+  empleadoId: string;
+  montoTotal: number;
+  cantidadCuotas: number;
   importeCuota: number;
-  fecha: string;
-  estado: 'solicitado' | 'aprobado' | 'pagado' | 'descontado' | 'anulado';
+  fechaInicio: string;
+  saldoPendiente: number;
+  estado: 'SOLICITADO' | 'ACTIVO' | 'CANCELADO' | 'ANULADO';
+  cuotas: PrestamoCuota[];
 }
 
 export interface ConceptoLiquidacion {
   id: string;
   codigo: string;
   nombre: string;
-  tipo: 'remunerativo' | 'no_remunerativo' | 'descuento' | 'aporte' | 'contribucion';
-  formulaCalculo?: string;
+  tipo: 'REMUNERATIVO' | 'NO_REMUNERATIVO' | 'DESCUENTO' | 'CONTRIBUCION_PATRONAL';
+  modoCalculo: 'PORCENTAJE' | 'FIJO' | 'FORMULA' | 'DIARIO_HORA';
+  porcentaje?: number;
+  importeFijo?: number;
+  baseCalculo?: string;
+  vigenciaDesde: string;
+  vigenciaHasta?: string;
+  convenio?: string;
+  impactaSAC: boolean;
+  impactaVacaciones: boolean;
+  activo: boolean;
+}
+
+export interface ReglaSalarialVersionada {
+  id: string;
+  version: string;
+  vigenciaDesde: string;
+  vigenciaHasta?: string;
+  horasBaseMensuales: number;
+  coefCargasPatronales: number;
+  coefART: number;
+  observaciones?: string;
+}
+
+export interface LiquidacionDetalle {
+  id: string;
+  liquidacionId: string;
+  conceptoCodigo: string;
+  conceptoNombre: string;
+  tipo: 'REMUNERATIVO' | 'NO_REMUNERATIVO' | 'DESCUENTO' | 'CONTRIBUCION_PATRONAL';
+  cantidad: number;
+  unidad: string;
+  baseCalculo: number;
+  porcentaje: number;
+  haberes: number;
+  descuentos: number;
+  orden: number;
 }
 
 export interface LiquidacionSueldo {
   id: string;
-  periodo: string; // '2026-09'
+  periodo: string; // 'YYYY-MM'
+  tipo: 'MENSUAL' | 'QUINCENAL' | 'SAC' | 'VACACIONES' | 'FINAL' | 'ESPECIAL';
   empleadoId: string;
   sueldoBasico: number;
   totalRemunerativo: number;
@@ -154,22 +267,51 @@ export interface LiquidacionSueldo {
   netoAPagar: number;
   contribucionesPatronales: number;
   costoTotalEmpresa: number;
-  estado: 'borrador' | 'calculada' | 'aprobada' | 'cerrada' | 'pagada';
+  estado: 'BORRADOR' | 'CALCULADA' | 'REVISADA' | 'APROBADA' | 'CERRADA' | 'PAGADA' | 'ANULADA';
+  fechaCierre?: string;
+  usuarioCierre?: string;
+  detalles: LiquidacionDetalle[];
+  snapshotJson?: string;
 }
 
 export interface ImputacionCostoLaboral {
   id: string;
+  eventId: string; // Clave de idempotencia
   empleadoId: string;
   fecha: string;
   centroCostoId: string;
+  origenModulo: 'LOGISTICA_VIAJE' | 'TALLER_OT' | 'ARIDOS_MAQUINARIA' | 'PRODUCCION_PLANTA' | 'MANUAL';
+  origenId: string;
   equipoId?: string;
-  viajeId?: string;
-  ordenTrabajoId?: string;
   horasImputadas: number;
-  costoHorario: number;
+  costoHorarioAplicado: number;
   costoTotalImputado: number;
+  periodoImputacion: string;
+  createdAt: string;
 }
 
+export interface AuditoriaSistema {
+  id: string;
+  fechaHora: string;
+  usuarioId?: string;
+  usuarioNombre: string;
+  entidad: string;
+  registroId: string;
+  accion: string;
+  valorAnterior?: any;
+  valorNuevo?: any;
+  motivo?: string;
+}
+
+export interface AvailabilityResult {
+  disponible: boolean;
+  bloqueante: boolean;
+  codigoMotivo?: 'OK' | 'INACTIVO' | 'LICENCIA_CONDUCIR_VENCIDA' | 'DOC_BLOQUEANTE_VENCIDO' | 'NOVEDAD_ACTIVA' | 'SIN_HABILITACION_EQUIPO' | 'ASIGNACION_CONFLICTIVA';
+  motivo?: string;
+  restricciones: string[];
+}
+
+// Entidades de otros módulos requeridas para contratos
 export interface Equipo {
   id: string;
   codigo: string;
@@ -307,4 +449,3 @@ export interface Factura {
   estado: 'emitida' | 'pagada' | 'vencida' | 'anulada';
   remitoNros: string[];
 }
-
