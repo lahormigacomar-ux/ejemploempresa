@@ -203,6 +203,7 @@ CREATE TABLE IF NOT EXISTS comp_orden_items (
     orden_compra_id VARCHAR(50) NOT NULL REFERENCES comp_ordenes_compra(id) ON DELETE CASCADE,
     solicitud_item_id VARCHAR(50) REFERENCES comp_solicitud_items(id),
     articulo_id VARCHAR(50),
+    tipo_combustible_id VARCHAR(50) REFERENCES comb_catalogo_combustibles(id),
     tipo VARCHAR(30) NOT NULL DEFAULT 'ARTICULO' CHECK (tipo IN ('ARTICULO', 'SERVICIO', 'OTRO')),
     descripcion_snapshot TEXT NOT NULL,
     cantidad NUMERIC(12,2) NOT NULL CHECK (cantidad > 0),
@@ -215,7 +216,7 @@ CREATE TABLE IF NOT EXISTS comp_orden_items (
     total NUMERIC(14,2) NOT NULL DEFAULT 0,
     cantidad_recibida NUMERIC(12,2) NOT NULL DEFAULT 0,
     cantidad_pendiente NUMERIC(12,2) NOT NULL DEFAULT 0,
-    centro_costo_id VARCHAR(50),
+    centroCosto_id VARCHAR(50),
     equipo_id VARCHAR(50),
     orden_trabajo_id VARCHAR(50)
 );
@@ -233,6 +234,7 @@ CREATE TABLE IF NOT EXISTS comp_recepciones (
     planta_id VARCHAR(50),
     deposito_id VARCHAR(50),
     tanque_id VARCHAR(50), -- FK comb_tanques (Integración combustible)
+    ingreso_combustible_id VARCHAR(50), -- Legacy header reference
     recibido_por_empleado_id VARCHAR(50) NOT NULL, -- FK rrhh_empleados
     estado VARCHAR(30) NOT NULL DEFAULT 'CONFIRMADA' CHECK (estado IN ('BORRADOR', 'CONFIRMADA', 'ANULADA')),
     observaciones TEXT,
@@ -251,6 +253,8 @@ CREATE TABLE IF NOT EXISTS comp_recepcion_items (
     recepcion_id VARCHAR(50) NOT NULL REFERENCES comp_recepciones(id) ON DELETE CASCADE,
     orden_compra_item_id VARCHAR(50) NOT NULL REFERENCES comp_orden_items(id),
     articulo_id VARCHAR(50),
+    tipo_combustible_id VARCHAR(50) REFERENCES comb_catalogo_combustibles(id),
+    ingreso_combustible_id VARCHAR(50) REFERENCES comb_ingresos_tanque(id),
     tipo VARCHAR(30) NOT NULL DEFAULT 'ARTICULO',
     descripcion_snapshot TEXT NOT NULL,
     cantidad_recibida NUMERIC(12,2) NOT NULL CHECK (cantidad_recibida > 0),

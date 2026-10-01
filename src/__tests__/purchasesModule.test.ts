@@ -1222,4 +1222,278 @@ describe('MÓDULO 5 — COMPRAS & PROVEEDORES', () => {
       })
     ).rejects.toThrow(/Aislamiento multiempresa violado/);
   });
+
+  it('Caso AR: Dos items del mismo combustible con precios distintos generan dos ingresos de tanque correctamente valorizados', async () => {
+    const ocDoblePrecio = await purchaseOrderService.createOrder({
+      empresaId: 'emp-1',
+      proveedorId: 'prov-comb-02',
+      items: [
+        {
+          tipo: 'ARTICULO',
+          tipoCombustibleId: 'fuel-diesel-500',
+          descripcion: 'Diesel 500 Lote A',
+          cantidad: 2000,
+          unidadMedida: 'LITRO',
+          precioUnitario: 1100
+        },
+        {
+          tipo: 'ARTICULO',
+          tipoCombustibleId: 'fuel-diesel-500',
+          descripcion: 'Diesel 500 Lote B',
+          cantidad: 3000,
+          unidadMedida: 'LITRO',
+          precioUnitario: 1200
+        }
+      ]
+    });
+
+    const rec = await purchaseReceiptService.confirmReceipt({
+      empresaId: 'emp-1',
+      ordenCompraId: ocDoblePrecio.id,
+      tanqueId: 'tq-pl1-diesel-01',
+      recibidoPorEmpleadoId: 'emp-1',
+      items: [
+        {
+          ordenCompraItemId: ocDoblePrecio.items[0].id,
+          cantidadRecibida: 2000,
+          cantidadAceptada: 2000
+        },
+        {
+          ordenCompraItemId: ocDoblePrecio.items[1].id,
+          cantidadRecibida: 3000,
+          cantidadAceptada: 3000
+        }
+      ]
+    });
+
+    expect(rec.receipt.items[0].ingresoCombustibleId).toBeDefined();
+    expect(rec.receipt.items[1].ingresoCombustibleId).toBeDefined();
+    expect(rec.receipt.items[0].ingresoCombustibleId).not.toBe(rec.receipt.items[1].ingresoCombustibleId);
+
+    const ing1 = await tankRepository.getTankIncomeById(rec.receipt.items[0].ingresoCombustibleId!);
+    const ing2 = await tankRepository.getTankIncomeById(rec.receipt.items[1].ingresoCombustibleId!);
+
+    expect(ing1?.litros).toBe(2000);
+    expect(ing1?.precioUnitario).toBe(1100);
+    expect(ing1?.costoTotal).toBe(2200000);
+
+    expect(ing2?.litros).toBe(3000);
+    expect(ing2?.precioUnitario).toBe(1200);
+    expect(ing2?.costoTotal).toBe(3600000);
+  });
+
+  it('Caso AS: La suma de litros ingresados al tanque coincide exactamente con la suma de cantidades aceptadas de items combustible', async () => {
+    const tankBefore = await tankRepository.getTankById('tq-pl1-diesel-01');
+    const stockAntes = tankBefore?.stockActualLitros || 8500;
+
+    const oc = await purchaseOrderService.createOrder({
+      empresaId: 'emp-1',
+      proveedorId: 'prov-comb-02',
+      items: [
+        {
+          tipo: 'ARTICULO',
+          tipoCombustibleId: 'fuel-diesel-500',
+          descripcion: 'Diesel Parte 1',
+          cantidad: 1500,
+          unidadMedida: 'LITRO',
+          precioUnitario: 1150
+        },
+        {
+          tipo: 'ARTICULO',
+          tipoCombustibleId: 'fuel-diesel-500',
+          descripcion: 'Diesel Parte 2',
+          cantidad: 2500,
+          unidadMedida: 'LITRO',
+          precioUnitario: 1150
+        }
+      ]
+    });
+
+    await purchaseReceiptService.confirmReceipt({
+      empresaId: 'emp-1',
+      ordenCompraId: oc.id,
+      tanqueId: 'tq-pl1-diesel-01',
+      recibidoPorEmpleadoId: 'emp-1',
+      items: [
+        { ordenCompraItemId: oc.items[0].id, cantidadRecibida: 1500, cantidadAceptada: 1500 },
+        { ordenCompraItemId: oc.items[1].id, cantidadRecibida: 2500, cantidadAceptada: 2500 }
+      ]
+    });
+
+    const tankAfter = await tankRepository.getTankById('tq-pl1-diesel-01');
+    expect(tankAfter?.stockActualLitros).toBe(stockAntes + 4000);
+  });
+
+  it('Caso AT: Un item no combustible dentro de recepción mixta no genera ingreso de tanque', async () => {
+    const ocMixta = await purchaseOrderService.createOrder({
+      empresaId: 'emp-1',
+      proveedorId: 'prov-comb-02',
+      items: [
+        {
+          tipo: 'ARTICULO',
+          descripcion: 'Aceite Hidráulico Tambor',
+          cantidad: 2,
+          unidadMedida: 'UNIDAD',
+          precioUnitario: 180000
+        },
+        {
+          tipo: 'ARTICULO',
+          tipoCombustibleId: 'fuel-diesel-500',
+          descripcion: 'Diesel 500',
+          cantidad: 1000,
+          unidadMedida: 'LITRO',
+          precioUnitario: 1150
+        }
+      ]
+    });
+
+    const rec = await purchaseReceiptService.confirmReceipt({
+      empresaId: 'emp-1',
+      ordenCompraId: ocMixta.id,
+      tanqueId: 'tq-pl1-diesel-01',
+      recibidoPorEmpleadoId: 'emp-1',
+      items: [
+        { ordenCompraItemId: ocMixta.items[0].id, cantidadRecibida: 2, cantidadAceptada: 2 },
+        { ordenCompraItemId: ocMixta.items[1].id, cantidadRecibida: 1000, cantidadAceptada: 1000 }
+      ]
+    });
+
+    // Item no combustible no tiene ingresoCombustibleId
+    expect(rec.receipt.items[0].ingresoCombustibleId).toBeUndefined();
+    // Item combustible sí tiene ingresoCombustibleId
+    expect(rec.receipt.items[1].ingresoCombustibleId).toBeDefined();
+  });
+
+  it('Caso AU: Anular recepción con dos ingresos combustible genera exactamente dos reversiones y restaura el stock original', async () => {
+    const tankBefore = await tankRepository.getTankById('tq-pl1-diesel-01');
+    const stockAntes = tankBefore?.stockActualLitros || 8500;
+
+    const ocDoble = await purchaseOrderService.createOrder({
+      empresaId: 'emp-1',
+      proveedorId: 'prov-comb-02',
+      items: [
+        {
+          tipo: 'ARTICULO',
+          tipoCombustibleId: 'fuel-diesel-500',
+          descripcion: 'Diesel Tramo 1',
+          cantidad: 1200,
+          unidadMedida: 'LITRO',
+          precioUnitario: 1120
+        },
+        {
+          tipo: 'ARTICULO',
+          tipoCombustibleId: 'fuel-diesel-500',
+          descripcion: 'Diesel Tramo 2',
+          cantidad: 1800,
+          unidadMedida: 'LITRO',
+          precioUnitario: 1160
+        }
+      ]
+    });
+
+    const rec = await purchaseReceiptService.confirmReceipt({
+      empresaId: 'emp-1',
+      ordenCompraId: ocDoble.id,
+      tanqueId: 'tq-pl1-diesel-01',
+      recibidoPorEmpleadoId: 'emp-1',
+      items: [
+        { ordenCompraItemId: ocDoble.items[0].id, cantidadRecibida: 1200, cantidadAceptada: 1200 },
+        { ordenCompraItemId: ocDoble.items[1].id, cantidadRecibida: 1800, cantidadAceptada: 1800 }
+      ]
+    });
+
+    const tankMedio = await tankRepository.getTankById('tq-pl1-diesel-01');
+    expect(tankMedio?.stockActualLitros).toBe(stockAntes + 3000);
+
+    // Anular la recepción completa
+    await purchaseReceiptService.cancelReceipt(rec.receipt.id, 'Anulación de recepción con dos lotes');
+
+    const tankFinal = await tankRepository.getTankById('tq-pl1-diesel-01');
+    expect(tankFinal?.stockActualLitros).toBe(stockAntes);
+  });
+
+  it('Caso AV: Si el segundo item combustible tiene precio inválido, falla la prevalidación completa sin mutaciones parciales', async () => {
+    const tankBefore = await tankRepository.getTankById('tq-pl1-diesel-01');
+    const stockAntes = tankBefore?.stockActualLitros || 8500;
+
+    const ocParcialInvalida = await purchaseOrderService.createOrder({
+      empresaId: 'emp-1',
+      proveedorId: 'prov-comb-02',
+      items: [
+        {
+          tipo: 'ARTICULO',
+          tipoCombustibleId: 'fuel-diesel-500',
+          descripcion: 'Diesel Renglón 1 Válido',
+          cantidad: 2000,
+          unidadMedida: 'LITRO',
+          precioUnitario: 1150
+        },
+        {
+          tipo: 'ARTICULO',
+          tipoCombustibleId: 'fuel-diesel-500',
+          descripcion: 'Diesel Renglón 2 Inválido',
+          cantidad: 3000,
+          unidadMedida: 'LITRO',
+          precioUnitario: 1150
+        }
+      ]
+    });
+
+    // Alteramos el segundo item para tener precio unitario snapshot inválido (0)
+    ocParcialInvalida.items[1].precioUnitarioSnapshot = 0;
+    await purchaseOrderRepository.save(ocParcialInvalida);
+
+    await expect(
+      purchaseReceiptService.confirmReceipt({
+        empresaId: 'emp-1',
+        ordenCompraId: ocParcialInvalida.id,
+        tanqueId: 'tq-pl1-diesel-01',
+        recibidoPorEmpleadoId: 'emp-1',
+        items: [
+          { ordenCompraItemId: ocParcialInvalida.items[0].id, cantidadRecibida: 2000, cantidadAceptada: 2000 },
+          { ordenCompraItemId: ocParcialInvalida.items[1].id, cantidadRecibida: 3000, cantidadAceptada: 3000 }
+        ]
+      })
+    ).rejects.toThrow(/No existe precio unitario válido en la Orden de Compra/);
+
+    // 1. OC no cambió sus cantidades
+    const ocVerif = await purchaseOrderRepository.getById(ocParcialInvalida.id);
+    expect(ocVerif?.items[0].cantidadRecibida).toBe(0);
+    expect(ocVerif?.items[1].cantidadRecibida).toBe(0);
+    expect(ocVerif?.estado).toBe('EMITIDA');
+
+    // 2. Tanque no cambió su stock (primer item tampoco ingresó)
+    const tankVerif = await tankRepository.getTankById('tq-pl1-diesel-01');
+    expect(tankVerif?.stockActualLitros).toBe(stockAntes);
+  });
+
+  it('Caso AW: Cada RecepcionCompraItem combustible conserva vínculo explícito con su ingresoCombustibleId', async () => {
+    const oc = await purchaseOrderService.createOrder({
+      empresaId: 'emp-1',
+      proveedorId: 'prov-comb-02',
+      items: [
+        {
+          tipo: 'ARTICULO',
+          tipoCombustibleId: 'fuel-diesel-500',
+          descripcion: 'Diesel Lote Alpha',
+          cantidad: 1000,
+          unidadMedida: 'LITRO',
+          precioUnitario: 1150
+        }
+      ]
+    });
+
+    const res = await purchaseReceiptService.confirmReceipt({
+      empresaId: 'emp-1',
+      ordenCompraId: oc.id,
+      tanqueId: 'tq-pl1-diesel-01',
+      recibidoPorEmpleadoId: 'emp-1',
+      items: [{ ordenCompraItemId: oc.items[0].id, cantidadRecibida: 1000, cantidadAceptada: 1000 }]
+    });
+
+    const item = res.receipt.items[0];
+    expect(item.ingresoCombustibleId).toBeDefined();
+    expect(typeof item.ingresoCombustibleId).toBe('string');
+    expect(item.ingresoCombustibleId?.startsWith('ing-')).toBe(true);
+  });
 });

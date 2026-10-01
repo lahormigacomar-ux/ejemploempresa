@@ -1390,6 +1390,7 @@ export interface RecepcionCompraItem {
   ordenCompraItemId: string;
   articuloId?: string;
   tipoCombustibleId?: string;
+  ingresoCombustibleId?: string; // Vínculo explícito al ingreso individual valorizado en el tanque
   tipo: TipoItemCompra;
   descripcionSnapshot: string;
   cantidadRecibida: number;

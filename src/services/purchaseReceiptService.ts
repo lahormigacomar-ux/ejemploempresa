@@ -127,8 +127,10 @@ export class PurchaseReceiptService {
     }
 
     // =========================================================================
-    // 2. FASE DE EJECUCIÓN ATÓMICA
-    // Nota arquitectónica: En PostgreSQL/Supabase físico se ejecutará con BEGIN ... COMMIT
+    // 2. FASE DE EJECUCIÓN
+    // Nota arquitectónica: En memoria actual se ejecuta en secuencia validada.
+    // En PostgreSQL/Supabase físico esta operación completa (OC + Recepción + Tanque + Eventos)
+    // deberá ejecutarse dentro de una transacción real (BEGIN ... COMMIT).
     // =========================================================================
     const receiptId = `rec-${Date.now()}-${Math.random().toString(36).substring(2, 5)}`;
     const numero = await purchaseReceiptRepository.getNextNumero(empresaId);
@@ -142,12 +144,31 @@ export class PurchaseReceiptService {
       ocItem.cantidadRecibida += it.cantidadAceptada;
       ocItem.cantidadPendiente = ocItem.cantidad - ocItem.cantidadRecibida;
 
+      let itemIngresoCombustibleId: string | undefined;
+
+      // Integración limpia con Módulo 4: Por cada item de combustible aceptado, generar su propio ingreso de tanque valorizado
+      if (params.tanqueId && tankObj && ocItem.tipoCombustibleId && it.cantidadAceptada > 0) {
+        const income = await tankService.registerIncome({
+          tanqueId: params.tanqueId,
+          litros: it.cantidadAceptada,
+          proveedorNombre: ord.proveedorNombreSnapshot,
+          proveedorId: ord.proveedorId,
+          precioUnitario: ocItem.precioUnitarioSnapshot,
+          numeroRemito: params.numeroRemitoProveedor,
+          usuarioId: params.usuarioId,
+          observaciones: `Recepción de compra ${numero} (OC ${ord.numero}) - ${ocItem.descripcionSnapshot}`
+        });
+
+        itemIngresoCombustibleId = income.id;
+      }
+
       receiptItems.push({
         id: `rec-item-${receiptId}-${receiptItems.length + 1}`,
         recepcionId: receiptId,
         ordenCompraItemId: ocItem.id,
         articuloId: ocItem.articuloId,
         tipoCombustibleId: ocItem.tipoCombustibleId,
+        ingresoCombustibleId: itemIngresoCombustibleId,
         tipo: ocItem.tipo,
         descripcionSnapshot: ocItem.descripcionSnapshot,
         cantidadRecibida: it.cantidadRecibida,
@@ -168,30 +189,7 @@ export class PurchaseReceiptService {
     ord.estado = allCompleted ? 'RECIBIDA' : 'PARCIALMENTE_RECIBIDA';
     await purchaseOrderRepository.save(ord);
 
-    let ingresoCombustibleId: string | undefined;
-
-    // Integración limpia con Módulo 4: Solamente sumar al tanque los litros de combustible compatible
-    if (params.tanqueId && tankObj && fuelItemsToProcess.length > 0) {
-      const totalLitrosCombustible = fuelItemsToProcess.reduce((sum, entry) => sum + entry.it.cantidadAceptada, 0);
-
-      if (totalLitrosCombustible > 0) {
-        const firstFuelEntry = fuelItemsToProcess[0];
-        const precioUnitario = firstFuelEntry.ocItem.precioUnitarioSnapshot;
-
-        const income = await tankService.registerIncome({
-          tanqueId: params.tanqueId,
-          litros: totalLitrosCombustible,
-          proveedorNombre: ord.proveedorNombreSnapshot,
-          proveedorId: ord.proveedorId,
-          precioUnitario,
-          numeroRemito: params.numeroRemitoProveedor,
-          usuarioId: params.usuarioId,
-          observaciones: `Recepción de compra ${numero} (OC ${ord.numero})`
-        });
-
-        ingresoCombustibleId = income.id;
-      }
-    }
+    const firstIncomeId = receiptItems.find(it => it.ingresoCombustibleId)?.ingresoCombustibleId;
 
     const receipt: RecepcionCompra = {
       id: receiptId,
@@ -205,7 +203,7 @@ export class PurchaseReceiptService {
       plantaId: params.plantaId || ord.plantaEntregaId,
       depositoId: params.depositoId || ord.depositoEntregaId,
       tanqueId: params.tanqueId,
-      ingresoCombustibleId,
+      ingresoCombustibleId: firstIncomeId,
       recibidoPorEmpleadoId: params.recibidoPorEmpleadoId,
       estado: 'CONFIRMADA',
       items: receiptItems,
@@ -227,7 +225,7 @@ export class PurchaseReceiptService {
         ordenCompra: ord.numero,
         proveedor: ord.proveedorNombreSnapshot,
         estadoOC: ord.estado,
-        ingresoCombustibleId
+        ingresosCombustibleCount: receiptItems.filter(i => i.ingresoCombustibleId).length
       },
       `Recepción de compra ${receipt.numero} CONFIRMADA (OC ${ord.numero}) - Remito: ${params.numeroRemitoProveedor || 'S/N'}`,
       params.usuarioId || 'admin_compras'
@@ -268,9 +266,11 @@ export class PurchaseReceiptService {
       await purchaseOrderRepository.save(ord);
     }
 
-    // Revertir el ingreso a tanque si la recepción generó ingreso de combustible
-    if (rec.ingresoCombustibleId) {
-      await tankService.cancelIncome(rec.ingresoCombustibleId, motivo, usuarioId);
+    // Revertir individualmente cada ingreso de combustible generado por los items
+    for (const item of rec.items) {
+      if (item.ingresoCombustibleId) {
+        await tankService.cancelIncome(item.ingresoCombustibleId, motivo, usuarioId);
+      }
     }
 
     const now = new Date().toISOString();
