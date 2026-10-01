@@ -1108,3 +1108,398 @@ export interface AlertaCombustible {
   fechaResolucion?: string;
 }
 
+// ==========================================
+// MÓDULO 5: COMPRAS & PROVEEDORES
+// ==========================================
+export type CondicionIVA =
+  | 'RESPONSABLE_INSCRIPTO'
+  | 'MONOTRIBUTO'
+  | 'EXENTO'
+  | 'NO_RESPONSABLE'
+  | 'CONSUMIDOR_FINAL'
+  | 'EXTERIOR';
+
+export type CondicionPago =
+  | 'CONTADO'
+  | 'CUENTA_CORRIENTE'
+  | 'TRANSFERENCIA'
+  | 'CHEQUE_30'
+  | 'CHEQUE_60'
+  | 'CHEQUE_90'
+  | 'OTRA';
+
+export type Moneda = 'ARS' | 'USD' | 'EUR';
+export type EstadoProveedor = 'ACTIVO' | 'INACTIVO' | 'BLOQUEADO';
+
+export interface ProveedorContacto {
+  id: string;
+  proveedorId: string;
+  nombre: string;
+  cargoSector: string;
+  telefono: string;
+  email: string;
+  whatsapp?: string;
+  esPrincipal: boolean;
+  activo: boolean;
+}
+
+export interface ProveedorCuentaBancaria {
+  id: string;
+  proveedorId: string;
+  banco: string;
+  tipoCuenta: 'CUENTA_CORRIENTE' | 'CAJA_AHORRO' | 'OTRA';
+  numeroCuenta: string;
+  cbu: string;
+  alias?: string;
+  titular: string;
+  cuitTitular: string;
+  moneda: Moneda;
+  activa: boolean;
+}
+
+export interface ProveedorDocumento {
+  id: string;
+  proveedorId: string;
+  tipo: 'CONSTANCIA_AFIP_ARCA' | 'CERTIFICADO_EXCLUSION' | 'CONTRATO' | 'SEGURO' | 'LISTA_PRECIOS' | 'OTRO';
+  numero?: string;
+  fechaEmision: string;
+  fechaVencimiento?: string;
+  archivoUrl?: string;
+  estado: 'vigente' | 'proximo_vencimiento' | 'vencido';
+  observaciones?: string;
+}
+
+export interface Proveedor {
+  id: string;
+  empresaId: string;
+  codigo: string; // ej: PROV-0010
+  razonSocial: string;
+  nombreFantasia?: string;
+  tipoDocumento: 'CUIT' | 'DNI' | 'PASAPORTE' | 'EXTERIOR';
+  numeroDocumento: string; // CUIT
+  condicionIVA: CondicionIVA;
+  ingresosBrutos?: string;
+  
+  // Domicilio fiscal
+  direccion: string;
+  localidad: string;
+  provincia: string;
+  pais: string;
+  codigoPostal: string;
+
+  telefono: string;
+  email: string;
+  contactoPrincipalNombre?: string;
+  sitioWeb?: string;
+
+  // Condiciones comerciales
+  condicionPagoDefault: CondicionPago;
+  diasPagoDefault: number; // ej: 30 días
+  monedaDefault: Moneda;
+  montoCreditoMaximo?: number;
+  categoriasProveidas: string[]; // ['CEMENTO', 'ARIDOS', 'ADITIVOS', 'COMBUSTIBLE', 'REPUESTOS', 'SERVICIOS']
+  tiempoEntregaDiasEstimado?: number;
+
+  contactos?: ProveedorContacto[];
+  cuentasBancarias?: ProveedorCuentaBancaria[];
+  documentos?: ProveedorDocumento[];
+
+  estado: EstadoProveedor;
+  observaciones?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// 2. Solicitudes de Compra
+export type PrioridadSolicitud = 'BAJA' | 'NORMAL' | 'ALTA' | 'URGENTE' | 'CRITICA';
+export type EstadoSolicitudCompra =
+  | 'BORRADOR'
+  | 'PENDIENTE_APROBACION'
+  | 'APROBADA'
+  | 'RECHAZADA'
+  | 'EN_COTIZACION'
+  | 'ORDENADA'
+  | 'PARCIALMENTE_ORDENADA'
+  | 'CERRADA'
+  | 'CANCELADA';
+
+export type TipoItemCompra = 'ARTICULO' | 'SERVICIO' | 'OTRO';
+
+export interface SolicitudCompraItem {
+  id: string;
+  solicitudId: string;
+  tipo: TipoItemCompra;
+  articuloId?: string; // Futuro Módulo 6
+  descripcionSnapshot: string;
+  cantidad: number;
+  unidadMedida: string; // 'KG', 'TN', 'M3', 'LITRO', 'UNIDAD', 'HORA', 'GLOBAL'
+  centroCostoId?: string;
+  equipoId?: string;
+  ordenTrabajoId?: string;
+  cantidadOrdenada: number;
+  cantidadPendiente: number;
+  observaciones?: string;
+}
+
+export interface SolicitudCompra {
+  id: string;
+  empresaId: string;
+  numero: string; // ej: SC-000001
+  fechaSolicitud: string;
+  solicitanteEmpleadoId: string;
+  sector: string; // 'TALLER', 'PLANTA_HORMIGON', 'CANTERA', 'LOGISTICA', 'ADMIN'
+  plantaId?: string;
+  centroCostoId?: string;
+  prioridad: PrioridadSolicitud;
+  motivo: string;
+  estado: EstadoSolicitudCompra;
+  fechaNecesidad?: string;
+  origenModulo: 'MANUAL' | 'MANTENIMIENTO' | 'STOCK' | 'COMBUSTIBLE' | 'PRODUCCION' | 'RRHH' | 'OTRO';
+  origenId?: string;
+  requiereAprobacion: boolean;
+  aprobadorId?: string;
+  fechaAprobacion?: string;
+  comentarioAprobacion?: string;
+  items: SolicitudCompraItem[];
+  observaciones?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// 3. Cotizaciones de Proveedores
+export type EstadoCotizacion =
+  | 'BORRADOR'
+  | 'RECIBIDA'
+  | 'EVALUADA'
+  | 'SELECCIONADA'
+  | 'DESCARTADA'
+  | 'VENCIDA';
+
+export interface CotizacionProveedorItem {
+  id: string;
+  cotizacionId: string;
+  solicitudItemId?: string;
+  articuloId?: string;
+  descripcionSnapshot: string;
+  cantidad: number;
+  precioUnitario: number;
+  descuentoPct: number;
+  ivaPct: number;
+  otrosImpuestos: number;
+  subtotal: number;
+  total: number;
+  plazoEntregaDias?: number;
+}
+
+export interface CotizacionProveedor {
+  id: string;
+  empresaId: string;
+  numero: string; // ej: COT-000001
+  solicitudCompraId?: string;
+  proveedorId: string;
+  proveedorNombreSnapshot: string;
+  fechaEmision: string;
+  fechaVencimiento: string;
+  moneda: Moneda;
+  condicionPago: CondicionPago;
+  plazoEntregaDias?: number;
+  subtotal: number;
+  descuentos: number;
+  impuestos: number;
+  total: number;
+  items: CotizacionProveedorItem[];
+  estado: EstadoCotizacion;
+  observaciones?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// 4. Órdenes de Compra
+export type EstadoOrdenCompra =
+  | 'BORRADOR'
+  | 'PENDIENTE_APROBACION'
+  | 'APROBADA'
+  | 'EMITIDA'
+  | 'PARCIALMENTE_RECIBIDA'
+  | 'RECIBIDA'
+  | 'CERRADA'
+  | 'CANCELADA';
+
+export interface OrdenCompraItem {
+  id: string;
+  ordenCompraId: string;
+  solicitudItemId?: string;
+  articuloId?: string;
+  tipo: TipoItemCompra;
+  descripcionSnapshot: string;
+  cantidad: number;
+  unidadMedida: string;
+  precioUnitarioSnapshot: number;
+  descuentoPctSnapshot: number;
+  ivaPctSnapshot: number;
+  otrosImpuestosSnapshot: number;
+  subtotal: number;
+  total: number;
+  cantidadRecibida: number;
+  cantidadPendiente: number;
+  centroCostoId?: string;
+  equipoId?: string;
+  ordenTrabajoId?: string;
+}
+
+export interface OrdenCompra {
+  id: string;
+  empresaId: string;
+  numero: string; // ej: OC-000001
+  proveedorId: string;
+  proveedorNombreSnapshot: string;
+  proveedorCuitSnapshot: string;
+  solicitudCompraId?: string;
+  cotizacionProveedorId?: string;
+  fechaEmision: string;
+  fechaEntregaEsperada?: string;
+  moneda: Moneda;
+  tipoCambioSnapshot: number;
+  condicionPago: CondicionPago;
+  plantaEntregaId?: string;
+  depositoEntregaId?: string;
+  centroCostoId?: string;
+  estado: EstadoOrdenCompra;
+  subtotal: number;
+  descuentos: number;
+  impuestos: number;
+  total: number;
+  items: OrdenCompraItem[];
+  observaciones?: string;
+  fechaCancelacion?: string;
+  usuarioCancelacion?: string;
+  motivoCancelacion?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// 5. Recepciones de Compra
+export type EstadoRecepcionCompra = 'BORRADOR' | 'CONFIRMADA' | 'ANULADA';
+
+export interface RecepcionCompraItem {
+  id: string;
+  recepcionId: string;
+  ordenCompraItemId: string;
+  articuloId?: string;
+  tipo: TipoItemCompra;
+  descripcionSnapshot: string;
+  cantidadRecibida: number;
+  cantidadAceptada: number;
+  cantidadRechazada: number;
+  unidadMedida: string;
+  motivoRechazo?: string;
+}
+
+export interface RecepcionCompra {
+  id: string;
+  empresaId: string;
+  numero: string; // ej: REC-000001
+  ordenCompraId: string;
+  proveedorId: string;
+  proveedorNombreSnapshot: string;
+  fechaHora: string;
+  numeroRemitoProveedor?: string;
+  plantaId?: string;
+  depositoId?: string;
+  tanqueId?: string; // Para recepciones de combustible integradas a Módulo 4
+  recibidoPorEmpleadoId: string;
+  estado: EstadoRecepcionCompra;
+  items: RecepcionCompraItem[];
+  observaciones?: string;
+  fechaAnulacion?: string;
+  usuarioAnulacion?: string;
+  motivoAnulacion?: string;
+  eventId?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// 6. Facturas / Comprobantes de Proveedores
+export type TipoComprobanteProveedor =
+  | 'FACTURA_A'
+  | 'FACTURA_B'
+  | 'FACTURA_C'
+  | 'FACTURA_M'
+  | 'NOTA_DEBITO_A'
+  | 'NOTA_CREDITO_A'
+  | 'REMITO'
+  | 'TICKET_FISCAL'
+  | 'OTRO';
+
+export type EstadoFacturaProveedor = 'BORRADOR' | 'REGISTRADA' | 'ANULADA';
+
+export interface FacturaProveedorItem {
+  id: string;
+  facturaId: string;
+  ordenCompraItemId?: string;
+  descripcion: string;
+  cantidad: number;
+  precioUnitario: number;
+  ivaPct: number;
+  subtotal: number;
+  total: number;
+}
+
+export interface FacturaProveedor {
+  id: string;
+  empresaId: string;
+  proveedorId: string;
+  proveedorNombreSnapshot: string;
+  proveedorCuitSnapshot: string;
+  tipoComprobante: TipoComprobanteProveedor;
+  puntoVenta: number;
+  numeroComprobante: number; // clave única: (empresa, proveedor, tipo, puntoVenta, numero)
+  fechaEmision: string;
+  fechaVencimiento: string;
+  moneda: Moneda;
+  tipoCambioSnapshot: number;
+  subtotalNetoGravado: number;
+  subtotalNoGravado: number;
+  iva21: number;
+  iva105: number;
+  iva27: number;
+  totalIva: number;
+  percepcionesIIBB: number;
+  percepcionesIVA: number;
+  totalComprobante: number;
+  ordenCompraId?: string;
+  recepcionCompraId?: string;
+  items?: FacturaProveedorItem[];
+  estado: EstadoFacturaProveedor;
+  observaciones?: string;
+  fechaAnulacion?: string;
+  usuarioAnulacion?: string;
+  motivoAnulacion?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// 7. Matching y Conciliación Comercial
+export type EstadoMatchingCompra =
+  | 'OK'
+  | 'DIFERENCIA_CANTIDAD'
+  | 'DIFERENCIA_PRECIO'
+  | 'SIN_RECEPCION'
+  | 'SIN_ORDEN';
+
+export interface ResultadoMatchingCompra {
+  ordenCompraId?: string;
+  recepcionCompraId?: string;
+  facturaProveedorId?: string;
+  estadoMatching: EstadoMatchingCompra;
+  cantidadOrdenada: number;
+  cantidadRecibida: number;
+  cantidadFacturada: number;
+  montoOrdenado: number;
+  montoFacturado: number;
+  diferenciaCantidad: number;
+  diferenciaMonto: number;
+  detalles: string[];
+}
+
+
