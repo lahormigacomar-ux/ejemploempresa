@@ -2,7 +2,7 @@ import {
   MetricaRendimiento,
   NivelDesvioRendimiento,
   ParametroRendimientoEquipo,
-  AbastecimientoCombustible
+  MetodoCalculoConsumo
 } from '../types';
 import { fuelPerformanceRepository } from '../repositories/fuelPerformanceRepository';
 import { equipmentRepository } from '../repositories/equipmentRepository';
@@ -10,6 +10,7 @@ import { equipmentRepository } from '../repositories/equipmentRepository';
 export interface EvaluacionRendimientoResult {
   rendimientoCalculado?: number;
   metricaRendimiento?: MetricaRendimiento;
+  metodoCalculoConsumo: MetodoCalculoConsumo;
   nivelDesvio: NivelDesvioRendimiento;
   valorObjetivo?: number;
   porcentajeDesvio?: number;
@@ -27,11 +28,17 @@ export class FuelPerformanceService {
     odometroActual?: number,
     odometroAnterior?: number,
     horometroActual?: number,
-    horometroAnterior?: number
+    horometroAnterior?: number,
+    tanqueActualLleno: boolean = false,
+    tanqueAnteriorLleno: boolean = false
   ): Promise<EvaluacionRendimientoResult> {
     const equipo = await equipmentRepository.getById(equipoId);
     if (!equipo) {
-      return { nivelDesvio: 'SIN_REFERENCIA', observacionRendimiento: 'Equipo no encontrado' };
+      return {
+        metodoCalculoConsumo: 'SIN_DETERMINAR',
+        nivelDesvio: 'SIN_REFERENCIA',
+        observacionRendimiento: 'Equipo no encontrado'
+      };
     }
 
     const param = await fuelPerformanceRepository.getParameters(
@@ -41,11 +48,18 @@ export class FuelPerformanceService {
       fecha.split('T')[0]
     );
 
+    const metodoCalculo: MetodoCalculoConsumo =
+      tanqueActualLleno && tanqueAnteriorLleno ? 'LLENO_A_LLENO' : 'ESTIMADO_ENTRE_CARGAS';
+
     // 1. Caso Vehículos / Mixers por Kilometraje (L_100KM o KM_L)
     if (odometroActual !== undefined && odometroAnterior !== undefined) {
       const distanciaKm = odometroActual - odometroAnterior;
       if (distanciaKm <= 0 || litros <= 0) {
-        return { nivelDesvio: 'SIN_DATOS', observacionRendimiento: 'Distancia o litros insuficientes para cálculo' };
+        return {
+          metodoCalculoConsumo: 'SIN_DETERMINAR',
+          nivelDesvio: 'SIN_DATOS',
+          observacionRendimiento: 'Distancia o litros insuficientes para estimar consumo'
+        };
       }
 
       const metrica: MetricaRendimiento = param?.metrica || 'L_100KM';
@@ -58,13 +72,19 @@ export class FuelPerformanceService {
       }
 
       const desvio = this.calculateDeviation(rendimiento, metrica, param);
+      const sufijoMetodo =
+        metodoCalculo === 'LLENO_A_LLENO'
+          ? ' (Metodología Lleno-a-Lleno)'
+          : ' (Estimación consumo entre cargas)';
+
       return {
         rendimientoCalculado: rendimiento,
         metricaRendimiento: metrica,
+        metodoCalculoConsumo: metodoCalculo,
         nivelDesvio: desvio.nivel,
         valorObjetivo: param?.valorObjetivo,
         porcentajeDesvio: desvio.porcentajeDesvio,
-        observacionRendimiento: desvio.motivo
+        observacionRendimiento: `${desvio.motivo}${sufijoMetodo}`
       };
     }
 
@@ -72,24 +92,35 @@ export class FuelPerformanceService {
     if (horometroActual !== undefined && horometroAnterior !== undefined) {
       const horasTrabajadas = horometroActual - horometroAnterior;
       if (horasTrabajadas <= 0 || litros <= 0) {
-        return { nivelDesvio: 'SIN_DATOS', observacionRendimiento: 'Horas u operativas insuficientes para cálculo' };
+        return {
+          metodoCalculoConsumo: 'SIN_DETERMINAR',
+          nivelDesvio: 'SIN_DATOS',
+          observacionRendimiento: 'Horas u operativas insuficientes para estimar consumo'
+        };
       }
 
       const metrica: MetricaRendimiento = 'L_HORA';
       const rendimiento = Number((litros / horasTrabajadas).toFixed(2));
 
       const desvio = this.calculateDeviation(rendimiento, metrica, param);
+      const sufijoMetodo =
+        metodoCalculo === 'LLENO_A_LLENO'
+          ? ' (Metodología Lleno-a-Lleno)'
+          : ' (Estimación consumo entre cargas)';
+
       return {
         rendimientoCalculado: rendimiento,
         metricaRendimiento: metrica,
+        metodoCalculoConsumo: metodoCalculo,
         nivelDesvio: desvio.nivel,
         valorObjetivo: param?.valorObjetivo,
         porcentajeDesvio: desvio.porcentajeDesvio,
-        observacionRendimiento: desvio.motivo
+        observacionRendimiento: `${desvio.motivo}${sufijoMetodo}`
       };
     }
 
     return {
+      metodoCalculoConsumo: 'SIN_DETERMINAR',
       nivelDesvio: 'SIN_DATOS',
       observacionRendimiento: 'No se cuenta con odómetro/horómetro anterior para estimar rendimiento'
     };

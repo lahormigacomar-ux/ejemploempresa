@@ -283,6 +283,7 @@ describe('MÓDULO 4 — COMBUSTIBLE Y RENDIMIENTO', () => {
     expect(res.supply.metricaRendimiento).toBe('L_100KM');
     expect(res.supply.rendimientoCalculado).toBe(35.0);
     expect(res.supply.nivelDesvio).toBe('NORMAL');
+    expect(res.supply.metodoCalculoConsumo).toBe('ESTIMADO_ENTRE_CARGAS');
   });
 
   it('Caso N: Maquinaria calcula L/h correctamente a partir del horómetro anterior', async () => {
@@ -302,6 +303,7 @@ describe('MÓDULO 4 — COMBUSTIBLE Y RENDIMIENTO', () => {
     expect(res.supply.metricaRendimiento).toBe('L_HORA');
     expect(res.supply.rendimientoCalculado).toBe(14.0);
     expect(res.supply.nivelDesvio).toBe('NORMAL');
+    expect(res.supply.metodoCalculoConsumo).toBe('ESTIMADO_ENTRE_CARGAS');
   });
 
   it('Caso O: Parámetro vigente se selecciona por fecha del abastecimiento', async () => {
@@ -488,5 +490,155 @@ describe('MÓDULO 4 — COMBUSTIBLE Y RENDIMIENTO', () => {
     });
     expect(res2.isDuplicate).toBe(true);
     expect(res2.supply.id).toBe(res1.supply.id);
+  });
+
+  it('Caso Y: Abastecimiento sin precio explícito ni precio de referencia configurado es rechazado', async () => {
+    const fuelType = await tankRepository.getFuelTypeById('fuel-urea');
+    if (fuelType) fuelType.precioReferencia = undefined;
+
+    await expect(
+      fuelService.registerSupply({
+        equipoId: 'eq-mix-12',
+        tipoCombustibleId: 'fuel-urea',
+        origenAbastecimiento: 'ESTACION_SERVICIO',
+        litros: 20
+      })
+    ).rejects.toThrow(/No existe precio de combustible disponible para valorizar el abastecimiento/);
+  });
+
+  it('Caso Z: Empleado existente pero INACTIVO (Licencia/Suspendido) es rechazado al cargar combustible', async () => {
+    const emp = await employeeRepository.getById('emp-1');
+    if (emp) emp.estado = 'SUSPENDIDO';
+
+    await expect(
+      fuelService.registerSupply({
+        equipoId: 'eq-mix-12',
+        empleadoId: 'emp-1',
+        tipoCombustibleId: 'fuel-diesel-500',
+        origenAbastecimiento: 'TANQUE_INTERNO',
+        tanqueId: 'tq-pl1-diesel-01',
+        litros: 50,
+        odometroKm: 68600
+      })
+    ).rejects.toThrow(/no se encuentra en estado ACTIVO/);
+  });
+
+  it('Caso AA: Rendimiento entre cargas normales queda identificado como ESTIMADO_ENTRE_CARGAS', async () => {
+    const res = await fuelService.registerSupply({
+      equipoId: 'eq-mix-12',
+      tipoCombustibleId: 'fuel-diesel-500',
+      origenAbastecimiento: 'TANQUE_INTERNO',
+      tanqueId: 'tq-pl1-diesel-01',
+      litros: 100,
+      odometroKm: 68800,
+      tanqueEquipoLleno: false
+    });
+
+    expect(res.supply.metodoCalculoConsumo).toBe('ESTIMADO_ENTRE_CARGAS');
+    expect(res.supply.rendimientoCalculado).toBeDefined();
+  });
+
+  it('Caso AB: Metodología LLENO_A_LLENO queda explícita cuando ambas cargas sucesivas son a tanque lleno', async () => {
+    // Primera carga a tanque lleno
+    await fuelService.registerSupply({
+      equipoId: 'eq-mix-14',
+      tipoCombustibleId: 'fuel-diesel-500',
+      origenAbastecimiento: 'TANQUE_INTERNO',
+      tanqueId: 'tq-pl1-diesel-01',
+      litros: 180,
+      odometroKm: 42200,
+      tanqueEquipoLleno: true
+    });
+
+    // Segunda carga posterior también a tanque lleno
+    const res2 = await fuelService.registerSupply({
+      equipoId: 'eq-mix-14',
+      tipoCombustibleId: 'fuel-diesel-500',
+      origenAbastecimiento: 'TANQUE_INTERNO',
+      tanqueId: 'tq-pl1-diesel-01',
+      litros: 140,
+      odometroKm: 42600, // 400 km recorridos
+      tanqueEquipoLleno: true
+    });
+
+    expect(res2.supply.metodoCalculoConsumo).toBe('LLENO_A_LLENO');
+    expect(res2.supply.rendimientoCalculado).toBe(35.0); // 140 / 4 = 35 L/100km
+  });
+
+  it('Caso AC: Mismo comprobante en misma estación con eventId distinto genera alerta de posible duplicado', async () => {
+    await fuelService.registerSupply({
+      equipoId: 'eq-mix-14',
+      tipoCombustibleId: 'fuel-diesel-500',
+      origenAbastecimiento: 'ESTACION_SERVICIO',
+      estacionServicioNombre: 'YPF Panamericana KM 38',
+      litros: 80,
+      precioUnitario: 1200,
+      numeroTicket: 'TKT-YPF-778899',
+      odometroKm: 42300,
+      eventId: 'EVT-MANUAL-001'
+    });
+
+    // Segunda carga manual con diferente eventId pero mismo comprobante y contexto
+    await fuelService.registerSupply({
+      equipoId: 'eq-mix-14',
+      tipoCombustibleId: 'fuel-diesel-500',
+      origenAbastecimiento: 'ESTACION_SERVICIO',
+      estacionServicioNombre: 'YPF Panamericana KM 38',
+      litros: 80,
+      precioUnitario: 1200,
+      numeroTicket: 'TKT-YPF-778899',
+      odometroKm: 42400,
+      eventId: 'EVT-MANUAL-002'
+    });
+
+    const alerts = await fuelPerformanceRepository.getAlerts('emp-1', false);
+    const dupAlert = alerts.find(a => a.tipo === 'COMPROBANTE_DUPLICADO');
+    expect(dupAlert).toBeDefined();
+    expect(dupAlert?.descripcion).toContain('TKT-YPF-778899');
+  });
+
+  it('Caso AD: Idempotencia técnica por eventId duplicado devuelve el registro existente sin re-ejecución', async () => {
+    const res1 = await fuelService.registerSupply({
+      equipoId: 'eq-mix-12',
+      tipoCombustibleId: 'fuel-diesel-500',
+      origenAbastecimiento: 'TANQUE_INTERNO',
+      tanqueId: 'tq-pl1-diesel-01',
+      litros: 50,
+      odometroKm: 68600,
+      eventId: 'EVT-IDEMPOTENT-XYZ'
+    });
+
+    const res2 = await fuelService.registerSupply({
+      equipoId: 'eq-mix-12',
+      tipoCombustibleId: 'fuel-diesel-500',
+      origenAbastecimiento: 'TANQUE_INTERNO',
+      tanqueId: 'tq-pl1-diesel-01',
+      litros: 50,
+      odometroKm: 68600,
+      eventId: 'EVT-IDEMPOTENT-XYZ'
+    });
+
+    expect(res2.isDuplicate).toBe(true);
+    expect(res2.supply.id).toBe(res1.supply.id);
+  });
+
+  it('Caso AE: Un abastecimiento CONFIRMADO no puede modificarse arbitrariamente y requiere anulación formal', async () => {
+    const res = await fuelService.registerSupply({
+      equipoId: 'eq-mix-12',
+      tipoCombustibleId: 'fuel-diesel-500',
+      origenAbastecimiento: 'TANQUE_INTERNO',
+      tanqueId: 'tq-pl1-diesel-01',
+      litros: 70,
+      odometroKm: 68620
+    });
+
+    const sup = await fuelRepository.getSupplyById(res.supply.id);
+    expect(sup?.estado).toBe('CONFIRMADO');
+
+    // Intentar anular dos veces
+    await fuelService.cancelSupply(res.supply.id, 'Anulación de prueba', 'usr-admin');
+    await expect(
+      fuelService.cancelSupply(res.supply.id, 'Segunda anulación', 'usr-admin')
+    ).rejects.toThrow(/ya se encuentra ANULADO/);
   });
 });

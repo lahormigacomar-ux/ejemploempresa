@@ -923,6 +923,12 @@ export type EstadoTanque = 'ACTIVO' | 'INACTIVO' | 'MANTENIMIENTO';
 export type TipoMovimientoTanque = 'INGRESO' | 'EGRESO' | 'AJUSTE_POSITIVO' | 'AJUSTE_NEGATIVO';
 export type EstadoAbastecimiento = 'BORRADOR' | 'CONFIRMADO' | 'ANULADO';
 export type MetricaRendimiento = 'KM_L' | 'L_100KM' | 'L_HORA' | 'L_VIAJE' | 'L_M3' | 'L_TONELADA' | 'L_CICLO';
+export type MetodoCalculoConsumo =
+  | 'ESTIMADO_ENTRE_CARGAS'
+  | 'LLENO_A_LLENO'
+  | 'TELEMETRIA'
+  | 'MEDICION_DIRECTA'
+  | 'SIN_DETERMINAR';
 export type NivelDesvioRendimiento = 'NORMAL' | 'ADVERTENCIA' | 'CRITICO' | 'SIN_REFERENCIA' | 'SIN_DATOS';
 export type MetodoMedicionTanque = 'MANUAL' | 'VARILLA' | 'MEDIDOR' | 'SENSOR';
 export type TipoAlertaCombustible =
@@ -1023,6 +1029,8 @@ export interface AbastecimientoCombustible {
   horasTrabajadasEstimadas?: number;
   rendimientoCalculado?: number;
   metricaRendimiento?: MetricaRendimiento;
+  metodoCalculoConsumo?: MetodoCalculoConsumo;
+  tanqueEquipoLleno?: boolean;
   nivelDesvio?: NivelDesvioRendimiento;
   centroCostoId?: string;
   numeroComprobante?: string;

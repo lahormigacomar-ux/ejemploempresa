@@ -136,7 +136,7 @@ class FuelRepository {
   ): Promise<AbastecimientoCombustible | null> {
     const equipoSupplies = Array.from(this.supplies.values())
       .filter(s => s.equipoId === equipoId && s.estado === 'CONFIRMADO')
-      .filter(s => (beforeDate ? s.fechaHora < beforeDate : true))
+      .filter(s => (beforeDate ? s.fechaHora <= beforeDate : true))
       .sort((a, b) => b.fechaHora.localeCompare(a.fechaHora));
 
     return equipoSupplies[0] || null;

@@ -3,6 +3,12 @@
 -- Esquema relacional PostgreSQL / Supabase
 -- =====================================================================
 
+-- NOTA ARQUITECTÓNICA DE TRANSACCIONALIDAD:
+-- En el entorno de producción PostgreSQL / Supabase, la operación de confirmación
+-- de abastecimiento (actualización de contadores de flota, movimiento de egreso de tanque,
+-- registro de abastecimiento y alertas) debe ejecutarse obligatoriamente dentro de un bloque
+-- transaccional atómico (BEGIN ... COMMIT) para garantizar la consistencia ACID.
+
 -- 1. Catálogo Configurable de Tipos de Combustible
 CREATE TABLE IF NOT EXISTS comb_tipos_combustible (
     id VARCHAR(50) PRIMARY KEY,
@@ -100,7 +106,9 @@ CREATE TABLE IF NOT EXISTS comb_abastecimientos (
     km_recorridos_estimados NUMERIC(12,2),
     horas_trabajadas_estimadas NUMERIC(12,2),
     
-    -- Rendimiento & Desvío
+    -- Metodología y Rendimiento
+    tanque_equipo_lleno BOOLEAN NOT NULL DEFAULT FALSE,
+    metodo_calculo_consumo VARCHAR(30) NOT NULL DEFAULT 'ESTIMADO_ENTRE_CARGAS' CHECK (metodo_calculo_consumo IN ('ESTIMADO_ENTRE_CARGAS', 'LLENO_A_LLENO', 'TELEMETRIA', 'MEDICION_DIRECTA', 'SIN_DETERMINAR')),
     rendimiento_calculado NUMERIC(10,2),
     metrica_rendimiento VARCHAR(30) CHECK (metrica_rendimiento IN ('KM_L', 'L_100KM', 'L_HORA', 'L_VIAJE', 'L_M3', 'L_TONELADA', 'L_CICLO')),
     nivel_desvio VARCHAR(30) DEFAULT 'SIN_REFERENCIA' CHECK (nivel_desvio IN ('NORMAL', 'ADVERTENCIA', 'CRITICO', 'SIN_REFERENCIA', 'SIN_DATOS')),
@@ -201,13 +209,16 @@ CREATE TABLE IF NOT EXISTS comb_eventos_procesados (
 );
 
 -- =====================================================================
--- ÍNDICES ESTRATÉGICOS
+-- ÍNDICES ESTRATÉGICOS & IDEMPOTENCIA CONCURRENTE REAL
 -- =====================================================================
 CREATE INDEX IF NOT EXISTS idx_comb_tanques_empresa ON comb_tanques(empresa_id, estado);
 CREATE INDEX IF NOT EXISTS idx_comb_movimientos_tanque ON comb_movimientos_tanque(tanque_id, fecha_hora DESC);
 CREATE INDEX IF NOT EXISTS idx_comb_abastecimientos_equipo ON comb_abastecimientos(equipo_id, fecha_hora DESC);
 CREATE INDEX IF NOT EXISTS idx_comb_abastecimientos_empresa_fecha ON comb_abastecimientos(empresa_id, fecha_hora DESC);
 CREATE INDEX IF NOT EXISTS idx_comb_abastecimientos_tanque ON comb_abastecimientos(tanque_id, fecha_hora DESC);
-CREATE INDEX IF NOT EXISTS idx_comb_abastecimientos_event_id ON comb_abastecimientos(event_id);
+
+-- Índice UNIQUE parcial de idempotencia por empresa y event_id (previene inserciones concurrentes en PostgreSQL)
+CREATE UNIQUE INDEX IF NOT EXISTS uq_comb_abastecimientos_empresa_event ON comb_abastecimientos(empresa_id, event_id) WHERE event_id IS NOT NULL;
+
 CREATE INDEX IF NOT EXISTS idx_comb_parametros_lookup ON comb_parametros_rendimiento(empresa_id, equipo_id, tipo_equipo, vigencia_desde);
 CREATE INDEX IF NOT EXISTS idx_comb_alertas_activas ON comb_alertas(empresa_id, resuelta, severidad);

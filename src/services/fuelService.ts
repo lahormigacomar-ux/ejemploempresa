@@ -30,6 +30,7 @@ export class FuelService {
     precioUnitario?: number;
     odometroKm?: number;
     horometroHs?: number;
+    tanqueEquipoLleno?: boolean;
     centroCostoId?: string;
     numeroVale?: string;
     numeroComprobante?: string;
@@ -45,7 +46,7 @@ export class FuelService {
     const empresaId = params.empresaId || 'emp-1';
     const now = params.fechaHora || new Date().toISOString();
 
-    // 0. Control de Idempotencia por EventId / Key
+    // 0. Control de Idempotencia Técnica por EventId / Key
     if (params.eventId) {
       const existing = await fuelRepository.getSupplyByEventId(params.eventId);
       if (existing) {
@@ -69,10 +70,16 @@ export class FuelService {
       throw new Error(`El equipo ${equipo.codigoInterno} (${equipo.dominioPatente || 'S/D'}) se encuentra dado de BAJA`);
     }
 
-    // B. Validar Tipo de Combustible
+    // B. Validar Tipo de Combustible y Precio de Referencia
     const fuelType = await tankRepository.getFuelTypeById(params.tipoCombustibleId);
     if (!fuelType || !fuelType.activo) {
       throw new Error(`Tipo de combustible ${params.tipoCombustibleId} no válido o inactivo`);
+    }
+
+    // Precio monetario explícito o de referencia (SIN fallback inventado)
+    const precioUnitario = params.precioUnitario ?? fuelType.precioReferencia;
+    if (precioUnitario === undefined || precioUnitario === null || precioUnitario <= 0 || isNaN(precioUnitario)) {
+      throw new Error('No existe precio de combustible disponible para valorizar el abastecimiento.');
     }
 
     // C. Validar Origen y Tanque Interno
@@ -100,11 +107,14 @@ export class FuelService {
       }
     }
 
-    // D. Validar Empleado en RRHH (si se especifica)
+    // D. Validar Empleado en RRHH (Verificar existencia y estado ACTIVO)
     if (params.empleadoId) {
       const emp = await employeeRepository.getById(params.empleadoId);
       if (!emp) {
         throw new Error(`Empleado con ID ${params.empleadoId} no encontrado en RRHH`);
+      }
+      if (emp.estado !== 'ACTIVO') {
+        throw new Error(`El empleado asignado no se encuentra en estado ACTIVO (Estado actual: ${emp.estado})`);
       }
     }
 
@@ -124,12 +134,46 @@ export class FuelService {
       }
     }
 
+    // F. Detección Contextual de Posible Duplicado de Ticket / Comprobante Manual
+    const comprobanteToCheck = params.numeroComprobante || params.numeroTicket;
+    if (comprobanteToCheck) {
+      const allExisting = await fuelRepository.getAllSupplies({ empresaId });
+      const duplicateComprobante = allExisting.find(s => {
+        if (s.estado === 'ANULADO') return false;
+        const sameDoc = s.numeroComprobante === comprobanteToCheck || s.numeroTicket === comprobanteToCheck;
+        if (!sameDoc) return false;
+        if (s.origenAbastecimiento !== params.origenAbastecimiento) return false;
+        if (params.origenAbastecimiento === 'ESTACION_SERVICIO') {
+          return s.estacionServicioNombreSnapshot === params.estacionServicioNombre;
+        }
+        if (params.origenAbastecimiento === 'TANQUE_INTERNO') {
+          return s.tanqueId === params.tanqueId;
+        }
+        return true;
+      });
+
+      if (duplicateComprobante) {
+        await fuelPerformanceRepository.addAlert({
+          id: `alt-dup-comp-${Date.now()}`,
+          empresaId,
+          tipo: 'COMPROBANTE_DUPLICADO',
+          severidad: 'ADVERTENCIA',
+          titulo: `Posible Comprobante Duplicado: ${comprobanteToCheck}`,
+          descripcion: `Se detectó el comprobante ${comprobanteToCheck} previamente registrado en ${params.origenAbastecimiento} (Carga ref: ${duplicateComprobante.id}).`,
+          origenModulo: 'COMBUSTIBLE_ABASTECIMIENTO',
+          origenId: duplicateComprobante.id,
+          equipoId: equipo.id,
+          fecha: now,
+          resuelta: false
+        });
+      }
+    }
+
     // =========================================================================
     // 2. FASE DE EJECUCIÓN ATÓMICA
     // Nota arquitectónica: En PostgreSQL/Supabase físico se ejecutará con BEGIN ... COMMIT
     // =========================================================================
     const supplyId = `abs-${Date.now()}-${Math.random().toString(36).substring(2, 5)}`;
-    const precioUnitario = params.precioUnitario ?? fuelType.precioReferencia ?? 1150;
     const costoTotal = Number((params.litros * precioUnitario).toFixed(2));
 
     // 1. Actualizar contadores en el maestro de Flota (Fuente única de verdad)
@@ -179,7 +223,7 @@ export class FuelService {
       horasTrabajadas = params.horometroHs - horometroAnterior;
     }
 
-    // 4. Evaluar Rendimiento y Desvío
+    // 4. Evaluar Rendimiento y Metodología (Lleno-a-Lleno vs Estimado entre cargas)
     const evalResult = await fuelPerformanceService.evaluateSupplyPerformance(
       equipo.id,
       params.litros,
@@ -187,7 +231,9 @@ export class FuelService {
       params.odometroKm,
       odometroAnterior,
       params.horometroHs,
-      horometroAnterior
+      horometroAnterior,
+      params.tanqueEquipoLleno ?? false,
+      lastSupply?.tanqueEquipoLleno ?? false
     );
 
     const supply: AbastecimientoCombustible = {
@@ -211,6 +257,8 @@ export class FuelService {
       horometroHsAnteriorSnapshot: horometroAnterior,
       kmRecorridosEstimados: kmRecorridos,
       horasTrabajadasEstimadas: horasTrabajadas,
+      tanqueEquipoLleno: params.tanqueEquipoLleno ?? false,
+      metodoCalculoConsumo: evalResult.metodoCalculoConsumo,
       rendimientoCalculado: evalResult.rendimientoCalculado,
       metricaRendimiento: evalResult.metricaRendimiento,
       nivelDesvio: evalResult.nivelDesvio,
@@ -257,6 +305,7 @@ export class FuelService {
         litros: params.litros,
         costoTotal,
         origen: params.origenAbastecimiento,
+        metodoCalculo: evalResult.metodoCalculoConsumo,
         rendimiento: evalResult.rendimientoCalculado,
         desvio: evalResult.nivelDesvio
       },

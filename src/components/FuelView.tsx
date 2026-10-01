@@ -58,7 +58,6 @@ export const FuelView: React.FC = () => {
   // Modales
   const [showSupplyModal, setShowSupplyModal] = useState(false);
   const [showIncomeModal, setShowIncomeModal] = useState(false);
-  const [showMeasurementModal, setShowMeasurementModal] = useState(false);
   const [showCancelModal, setShowCancelModal] = useState(false);
   const [selectedSupplyToCancel, setSelectedSupplyToCancel] = useState<AbastecimientoCombustible | null>(null);
   const [cancelMotivo, setCancelMotivo] = useState('');
@@ -74,6 +73,7 @@ export const FuelView: React.FC = () => {
   const [formPrecioUnitario, setFormPrecioUnitario] = useState<number>(1150);
   const [formOdometro, setFormOdometro] = useState<number | undefined>();
   const [formHorometro, setFormHorometro] = useState<number | undefined>();
+  const [formTanqueLleno, setFormTanqueLleno] = useState<boolean>(false);
   const [formVale, setFormVale] = useState('');
   const [formObservaciones, setFormObservaciones] = useState('');
   const [formError, setFormError] = useState<string | null>(null);
@@ -145,6 +145,7 @@ export const FuelView: React.FC = () => {
         precioUnitario: Number(formPrecioUnitario),
         odometroKm: formOdometro ? Number(formOdometro) : undefined,
         horometroHs: formHorometro ? Number(formHorometro) : undefined,
+        tanqueEquipoLleno: formTanqueLleno,
         numeroVale: formVale || undefined,
         observaciones: formObservaciones || undefined
       });
@@ -199,6 +200,7 @@ export const FuelView: React.FC = () => {
     setFormLitros(0);
     setFormOdometro(undefined);
     setFormHorometro(undefined);
+    setFormTanqueLleno(false);
     setFormVale('');
     setFormObservaciones('');
     setFormError(null);
@@ -249,7 +251,13 @@ export const FuelView: React.FC = () => {
             <span>Recibir Cisterna</span>
           </button>
           <button
-            onClick={() => setShowSupplyModal(true)}
+            onClick={() => {
+              const defaultFuel = fuelTypes.find(f => f.id === formTipoCombustibleId);
+              if (defaultFuel?.precioReferencia) {
+                setFormPrecioUnitario(defaultFuel.precioReferencia);
+              }
+              setShowSupplyModal(true);
+            }}
             className="flex items-center space-x-2 px-3 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 rounded-lg text-xs font-semibold shadow-md transition"
           >
             <Plus className="w-4 h-4" />
@@ -419,7 +427,7 @@ export const FuelView: React.FC = () => {
                   <th className="px-3.5 py-3 text-right">Litros</th>
                   <th className="px-3.5 py-3 text-right">Contador (Km/Hs)</th>
                   <th className="px-3.5 py-3 text-right">Costo Total</th>
-                  <th className="px-3.5 py-3 text-center">Rendimiento</th>
+                  <th className="px-3.5 py-3 text-center">Rendimiento / Método</th>
                   <th className="px-3.5 py-3 text-center">Estado</th>
                   <th className="px-3.5 py-3 text-right">Acción</th>
                 </tr>
@@ -499,22 +507,33 @@ export const FuelView: React.FC = () => {
 
                         <td className="px-3.5 py-2.5 text-center">
                           {s.rendimientoCalculado ? (
-                            <div>
-                              <span className="font-bold text-white">{s.rendimientoCalculado}</span>{' '}
-                              <span className="text-[10px] text-slate-400">{s.metricaRendimiento}</span>
-                              <div>
+                            <div className="space-y-0.5">
+                              <div className="font-bold text-white">
+                                {s.rendimientoCalculado} <span className="text-[10px] text-slate-400 font-normal">{s.metricaRendimiento}</span>
+                              </div>
+                              <div className="flex items-center justify-center space-x-1">
+                                {s.metodoCalculoConsumo === 'LLENO_A_LLENO' ? (
+                                  <span className="inline-block px-1.5 py-0.2 rounded text-[8px] font-bold bg-cyan-950 text-cyan-300 border border-cyan-800">
+                                    LLENO-A-LLENO
+                                  </span>
+                                ) : (
+                                  <span className="inline-block px-1.5 py-0.2 rounded text-[8px] font-medium bg-slate-800 text-slate-400 border border-slate-700">
+                                    ESTIMADO
+                                  </span>
+                                )}
+
                                 {s.nivelDesvio === 'NORMAL' && (
-                                  <span className="inline-block px-1.5 py-0.2 rounded text-[9px] font-bold bg-emerald-950 text-emerald-300 border border-emerald-800">
-                                    NORMAL
+                                  <span className="inline-block px-1.5 py-0.2 rounded text-[8px] font-bold bg-emerald-950 text-emerald-300 border border-emerald-800">
+                                    OK
                                   </span>
                                 )}
                                 {s.nivelDesvio === 'ADVERTENCIA' && (
-                                  <span className="inline-block px-1.5 py-0.2 rounded text-[9px] font-bold bg-amber-950 text-amber-300 border border-amber-800">
-                                    DESVÍO +
+                                  <span className="inline-block px-1.5 py-0.2 rounded text-[8px] font-bold bg-amber-950 text-amber-300 border border-amber-800">
+                                    DESVÍO
                                   </span>
                                 )}
                                 {s.nivelDesvio === 'CRITICO' && (
-                                  <span className="inline-block px-1.5 py-0.2 rounded text-[9px] font-bold bg-rose-950 text-rose-300 border border-rose-800">
+                                  <span className="inline-block px-1.5 py-0.2 rounded text-[8px] font-bold bg-rose-950 text-rose-300 border border-rose-800">
                                     CRÍTICO
                                   </span>
                                 )}
@@ -949,6 +968,20 @@ export const FuelView: React.FC = () => {
                     className="w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-1.5 text-slate-200 focus:outline-none font-mono"
                   />
                 </div>
+              </div>
+
+              {/* Checkbox Lleno a Lleno */}
+              <div className="bg-slate-950 p-2.5 rounded border border-slate-800 flex items-center space-x-2">
+                <input
+                  type="checkbox"
+                  id="chk-lleno"
+                  checked={formTanqueLleno}
+                  onChange={e => setFormTanqueLleno(e.target.checked)}
+                  className="rounded bg-slate-900 border-slate-700 text-amber-500 focus:ring-0"
+                />
+                <label htmlFor="chk-lleno" className="text-slate-300 select-none cursor-pointer">
+                  Carga a tanque lleno (Habilita metodología <span className="font-bold text-cyan-400">Lleno-a-Lleno</span> si la carga previa también lo fue)
+                </label>
               </div>
 
               <div className="flex justify-end space-x-2 pt-2 border-t border-slate-800">
