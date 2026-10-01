@@ -2,12 +2,21 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { employeeRepository } from '../repositories/employeeRepository';
 import { attendanceRepository } from '../repositories/attendanceRepository';
 import { payrollRepository } from '../repositories/payrollRepository';
+import { laborCostRepository } from '../repositories/laborCostRepository';
 import { hrDomainService } from '../services/hrDomainService';
 import { hrAvailabilityService } from '../services/hrAvailabilityService';
 import { hrEventHandler } from '../services/hrEventHandler';
 import { FichadaAsistencia } from '../types';
 
 describe('MÓDULO 1 — PERSONAL / RRHH / ASISTENCIA / SUELDOS (SUITE DE INTEGRACIÓN)', () => {
+  beforeEach(() => {
+    // Garantizar aislamiento total de cada test
+    employeeRepository.resetForTesting();
+    attendanceRepository.resetForTesting();
+    payrollRepository.resetForTesting();
+    laborCostRepository.resetForTesting();
+  });
+
   it('Caso A: Licencia de conducir vencida bloquea asignación operativa de chofer', async () => {
     // emp-2 tiene licencia vencida al 2026-08-15
     const result = await hrAvailabilityService.canAssignEmployee('emp-2', '2026-09-30T08:00:00', 'mixer');

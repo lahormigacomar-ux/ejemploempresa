@@ -24,6 +24,9 @@ export interface CentroCosto {
   padreId?: string;
 }
 
+// ==========================================
+// MÓDULO 1: PERSONAL & RRHH
+// ==========================================
 export type RolPersonal =
   | 'chofer_mixer'
   | 'chofer_bomba'
@@ -42,7 +45,7 @@ export type RolPersonal =
   | 'otro';
 
 export interface HabilitacionEquipo {
-  equipoTipo: string; // 'mixer', 'cargadora', 'bomba', etc.
+  equipoTipo: string;
   habilitado: boolean;
   fechaVencimiento?: string;
   certificadoNro?: string;
@@ -118,8 +121,8 @@ export interface TurnoLaboral {
   id: string;
   codigo: string;
   nombre: string;
-  horaEntrada: string; // '06:00'
-  horaSalida: string; // '14:00'
+  horaEntrada: string;
+  horaSalida: string;
   cruzaMedianoche: boolean;
   toleranciaTardanzaMin: number;
   activo: boolean;
@@ -195,7 +198,7 @@ export interface PrestamoCuota {
   prestamoId: string;
   numeroCuota: number;
   importe: number;
-  periodoDescuento: string; // 'YYYY-MM'
+  periodoDescuento: string;
   estado: 'PENDIENTE' | 'DESCONTADA' | 'CANCELADA_ANTICIPADA';
   liquidacionId?: string;
 }
@@ -257,7 +260,7 @@ export interface LiquidacionDetalle {
 
 export interface LiquidacionSueldo {
   id: string;
-  periodo: string; // 'YYYY-MM'
+  periodo: string;
   tipo: 'MENSUAL' | 'QUINCENAL' | 'SAC' | 'VACACIONES' | 'FINAL' | 'ESPECIAL';
   empleadoId: string;
   sueldoBasico: number;
@@ -276,7 +279,7 @@ export interface LiquidacionSueldo {
 
 export interface ImputacionCostoLaboral {
   id: string;
-  eventId: string; // Clave de idempotencia
+  eventId: string;
   empleadoId: string;
   fecha: string;
   centroCostoId: string;
@@ -311,21 +314,198 @@ export interface AvailabilityResult {
   restricciones: string[];
 }
 
-// Entidades de otros módulos requeridas para contratos
+// ==========================================
+// MÓDULO 2: FLOTA Y MAQUINARIA OPERATIVA
+// ==========================================
+
+export type TipoEquipo =
+  | 'MIXER'
+  | 'CAMION'
+  | 'BOMBA_HORMIGON'
+  | 'CARGADORA'
+  | 'EXCAVADORA'
+  | 'RETROEXCAVADORA'
+  | 'MINICARGADORA'
+  | 'AUTOELEVADOR'
+  | 'CAMIONETA'
+  | 'AUTO'
+  | 'SEMIRREMOLQUE'
+  | 'GRUPO_ELECTROGENO'
+  | 'MAQUINARIA'
+  | 'OTRO';
+
+export type EstadoOperativoEquipo =
+  | 'DISPONIBLE'
+  | 'ASIGNADO'
+  | 'EN_OPERACION'
+  | 'EN_VIAJE'
+  | 'EN_TALLER'
+  | 'FUERA_SERVICIO'
+  | 'MANTENIMIENTO_PROGRAMADO'
+  | 'RESERVADO'
+  | 'BAJA';
+
+export type EstadoAdministrativoEquipo =
+  | 'ACTIVO'
+  | 'EN_PROCESO_ALTA'
+  | 'EN_TRAMITE_BAJA'
+  | 'BAJA_DEFINITIVA'
+  | 'VENDIDO';
+
+export type TipoPropiedadEquipo = 'PROPIO' | 'ALQUILADO' | 'LEASING' | 'TERCERO';
+
+export interface EspecificacionesEquipo {
+  pesoVacioKg?: number;
+  taraKg?: number;
+  capacidadCargaKg?: number;
+  capacidadTanqueCombustibleLt?: number;
+  tipoCombustible: 'DIESEL' | 'NAFTA' | 'GNC' | 'ELECTRICO' | 'HIBRIDO' | 'OTRO';
+  potenciaHp?: number;
+  cantidadEjes: number;
+  tipoTraccion?: string; // '4x2', '6x4', '8x4', 'Oruga'
+  
+  // Mixer
+  capacidadTamborM3?: number;
+  capacidadOperativaM3?: number;
+  marcaTambor?: string;
+  modeloTambor?: string;
+
+  // Bomba de hormigón
+  alcanceVerticalMts?: number;
+  alcanceHorizontalMts?: number;
+  caudalMaximoM3Hora?: number;
+
+  // Maquinaria Cantera / Áridos
+  capacidadBaldeM3?: number;
+  pesoOperativoKg?: number;
+}
+
+export interface LecturaContador {
+  id: string;
+  equipoId: string;
+  fechaHora: string;
+  tipoContador: 'ODOMETRO_KM' | 'HOROMETRO_HS';
+  valor: number;
+  origenLectura: 'MANUAL' | 'VIAJE' | 'TALLER' | 'TELEMETRIA' | 'GPS' | 'IMPORTACION';
+  referenciaOrigenId?: string;
+  usuarioRegistro?: string;
+  observaciones?: string;
+}
+
+export interface DocumentoEquipo {
+  id: string;
+  equipoId: string;
+  tipoDocumento:
+    | 'CEDULA_IDENTIFICACION'
+    | 'SEGURO_AUTOMOTOR'
+    | 'RTO_VTV'
+    | 'HABILITACION_SENASA'
+    | 'HABILITACION_MUNICIPAL'
+    | 'PERMISO_CARGA_PESADA'
+    | 'POLIZA_SEGURO'
+    | 'CERTIFICADO_CALIBRACION'
+    | 'OTRO';
+  numero: string;
+  entidadEmisora?: string;
+  fechaEmision: string;
+  fechaVencimiento?: string;
+  bloqueanteOperativo: boolean;
+  archivoUrl?: string;
+  estado: 'vigente' | 'proximo_vencimiento' | 'vencido';
+  observaciones?: string;
+}
+
+export interface SeguroEquipo {
+  id: string;
+  equipoId: string;
+  companiaAseguradora: string;
+  numeroPoliza: string;
+  tipoCobertura: string;
+  vigenciaDesde: string;
+  vigenciaHasta: string;
+  sumaAseguradaUsd?: number;
+  contactoProductor?: string;
+  activo: boolean;
+}
+
+export interface AsignacionPersonalEquipo {
+  id: string;
+  equipoId: string;
+  empleadoId: string;
+  fechaDesde: string;
+  fechaHasta?: string;
+  tipoAsignacion: 'HABITUAL' | 'TEMPORAL' | 'RELEVO' | 'PRUEBA';
+  origen: string;
+  estado: 'ACTIVA' | 'FINALIZADA' | 'CANCELADA';
+  observaciones?: string;
+}
+
 export interface Equipo {
   id: string;
+  empresaId: string;
+  codigoInterno: string; // ej: MIX-12
+  tipoEquipo: TipoEquipo;
+  subtipo?: string;
+  marca: string;
+  modelo: string;
+  version?: string;
+  anio: number;
+  dominioPatente?: string;
+  numeroChasis?: string;
+  numeroMotor?: string;
+  numeroSerie?: string;
+  color?: string;
+  descripcion?: string;
+
+  estadoAdministrativo: EstadoAdministrativoEquipo;
+  estadoOperativo: EstadoOperativoEquipo;
+
+  tipoPropiedad: TipoPropiedadEquipo;
+  propietarioRazonSocial?: string;
+  costoMensualAlquiler?: number;
+
+  plantaHabitualId?: string;
+  centroCostoHabitualId: string;
+  ubicacionActualTipo: 'PLANTA' | 'OBRA' | 'CANTERA' | 'TALLER' | 'EN_TRANSITO' | 'OTRA';
+  ubicacionActualReferencia?: string;
+
+  odometroKmActual: number;
+  horometroHsActual: number;
+  fechaUltimaLectura?: string;
+
+  especificaciones: EspecificacionesEquipo;
+  documentos: DocumentoEquipo[];
+  seguroVigente?: SeguroEquipo;
+  operadorAsignadoActual?: {
+    empleadoId: string;
+    nombreCompleto: string;
+    tipoAsignacion: 'HABITUAL' | 'TEMPORAL' | 'RELEVO';
+    fechaDesde: string;
+  };
+
+  // Compatibilidad con módulos existentes
   codigo: string;
-  tipo: 'mixer' | 'camion' | 'bomba' | 'cargadora' | 'excavadora' | 'grupo_electrogeno' | 'otro';
+  tipo: string;
   dominio: string;
   marcaModelo: string;
-  anio: number;
-  capacidadM3?: number;
   kmActual: number;
   horometroActual: number;
-  estado: 'disponible' | 'trabajando' | 'mantenimiento' | 'fuera_servicio';
+  capacidadM3?: number;
+  estado: string;
   centroCostoId: string;
 }
 
+export interface EquipmentAvailabilityResult {
+  disponible: boolean;
+  bloqueante: boolean;
+  codigoMotivo?: 'OK' | 'FUERA_SERVICIO' | 'EN_TALLER' | 'DOC_BLOQUEANTE_VENCIDO' | 'SEGURO_VENCIDO' | 'ASIGNACION_EN_CURSO' | 'CAPACIDAD_INSUFICIENTE' | 'NO_EXISTE' | 'INACTIVO_ADMINISTRATIVO';
+  motivo?: string;
+  restricciones: string[];
+}
+
+// ==========================================
+// OTROS MÓDULOS DEL ERP
+// ==========================================
 export interface Articulo {
   id: string;
   codigo: string;

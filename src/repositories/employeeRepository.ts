@@ -9,6 +9,12 @@ class EmployeeRepository {
     this.seedInitialData();
   }
 
+  resetForTesting() {
+    this.employees.clear();
+    this.history.clear();
+    this.seedInitialData();
+  }
+
   private seedInitialData() {
     const defaultEmployees: Empleado[] = [
       {

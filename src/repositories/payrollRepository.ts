@@ -162,6 +162,41 @@ class PayrollRepository {
 
   private liquidaciones: Map<string, LiquidacionSueldo> = new Map();
 
+  resetForTesting() {
+    this.liquidaciones.clear();
+    this.adelantos = [
+      {
+        id: 'ade-1',
+        empleadoId: 'emp-1',
+        fechaSolicitud: '2026-09-15',
+        importe: 150000,
+        motivo: 'Adelanto Quincenal',
+        estado: 'PAGADO',
+        fechaPago: '2026-09-15'
+      }
+    ];
+    this.prestamos = [
+      {
+        id: 'pres-1',
+        empleadoId: 'emp-3',
+        montoTotal: 300000,
+        cantidadCuotas: 6,
+        importeCuota: 50000,
+        fechaInicio: '2026-08-01',
+        saldoPendiente: 250000,
+        estado: 'ACTIVO',
+        cuotas: [
+          { id: 'cuo-1', prestamoId: 'pres-1', numeroCuota: 1, importe: 50000, periodoDescuento: '2026-08', estado: 'DESCONTADA' },
+          { id: 'cuo-2', prestamoId: 'pres-1', numeroCuota: 2, importe: 50000, periodoDescuento: '2026-09', estado: 'PENDIENTE' },
+          { id: 'cuo-3', prestamoId: 'pres-1', numeroCuota: 3, importe: 50000, periodoDescuento: '2026-10', estado: 'PENDIENTE' },
+          { id: 'cuo-4', prestamoId: 'pres-1', numeroCuota: 4, importe: 50000, periodoDescuento: '2026-11', estado: 'PENDIENTE' },
+          { id: 'cuo-5', prestamoId: 'pres-1', numeroCuota: 5, importe: 50000, periodoDescuento: '2026-12', estado: 'PENDIENTE' },
+          { id: 'cuo-6', prestamoId: 'pres-1', numeroCuota: 6, importe: 50000, periodoDescuento: '2027-01', estado: 'PENDIENTE' }
+        ]
+      }
+    ];
+  }
+
   async getReglaVigente(fecha: string): Promise<ReglaSalarialVersionada> {
     const regla = this.reglas.find(r => {
       if (fecha < r.vigenciaDesde) return false;

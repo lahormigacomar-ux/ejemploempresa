@@ -67,7 +67,7 @@ export default function App() {
             />
           )}
           {activeTab === 'personnel' && <PersonnelView />}
-          {activeTab === 'fleet' && <FleetView equipos={mockEquipos} ordenesMantenimiento={mockOrdenesMantenimiento} />}
+          {activeTab === 'fleet' && <FleetView />}
           {activeTab === 'stock' && <StockAggregatesView articulos={mockArticulos} />}
           {activeTab === 'sales' && <SalesOrdersView pedidos={mockPedidos} />}
           {activeTab === 'logistics' && <LogisticsDispatchView viajes={mockViajes} equipos={mockEquipos} />}

@@ -4,6 +4,10 @@ import { auditRepository } from './auditRepository';
 class LaborCostRepository {
   private allocations: Map<string, ImputacionCostoLaboral> = new Map(); // key = eventId
 
+  resetForTesting() {
+    this.allocations.clear();
+  }
+
   async saveAllocation(allocation: ImputacionCostoLaboral): Promise<{ saved: boolean; allocation: ImputacionCostoLaboral; isDuplicate: boolean }> {
     if (this.allocations.has(allocation.eventId)) {
       // Garantía de Idempotencia: Ya fue procesado, no duplicar costo

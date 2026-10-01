@@ -55,6 +55,25 @@ class AttendanceRepository {
     this.seedPunches();
   }
 
+  resetForTesting() {
+    this.fichadas = [];
+    this.jornadas.clear();
+    this.horasExtra = [];
+    this.novedades = [
+      {
+        id: 'nov-vac-1',
+        empleadoId: 'emp-3',
+        tipo: 'VACACIONES',
+        fechaDesde: '2026-10-15',
+        fechaHasta: '2026-10-25',
+        conGoceSueldo: true,
+        diasTotales: 10,
+        estado: 'APROBADA'
+      }
+    ];
+    this.seedPunches();
+  }
+
   private seedPunches() {
     // Fichadas para emp-1 (Juan Pérez) - 06:02 a 16:30 con descanso 12:00 a 12:30
     this.fichadas.push(
