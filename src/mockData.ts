@@ -305,11 +305,11 @@ export const mockEquipos: Equipo[] = [
 ];
 
 export const mockArticulos: Articulo[] = [
-  { id: 'art-cem', codigo: 'CEM-01', nombre: 'Cemento Portland Normal (CPN 40) - Granel', categoria: 'materia_prima', unidadMedida: 'kg', stockActual: 85000, stockMinimo: 20000, costoUnitario: 145 },
-  { id: 'art-arena', codigo: 'ARI-01', nombre: 'Arena Fina de Río Lavada', categoria: 'arido', unidadMedida: 't', stockActual: 1240, stockMinimo: 300, costoUnitario: 12500 },
-  { id: 'art-piedra', codigo: 'ARI-02', nombre: 'Piedra Partida 6-20 (Granitica)', categoria: 'arido', unidadMedida: 't', stockActual: 1850, stockMinimo: 400, costoUnitario: 14200 },
-  { id: 'art-aditivo', codigo: 'ADI-01', nombre: 'Aditivo Plastificante / Reductor de Agua', categoria: 'materia_prima', unidadMedida: 'lt', stockActual: 3200, stockMinimo: 800, costoUnitario: 890 },
-  { id: 'art-gasoil', codigo: 'COM-01', nombre: 'Gasoil Grado 2 (YPF)', categoria: 'combustible', unidadMedida: 'lt', stockActual: 15000, stockMinimo: 4000, costoUnitario: 1180 }
+  { id: 'art-cem', empresaId: 'emp-1', codigo: 'CEM-01', descripcion: 'Cemento Portland Normal (CPN 40) - Granel', categoriaId: 'cat-cemento', unidadMedidaBase: 'KG', estado: 'ACTIVO', controlaStock: true, controlaLote: true, controlaSerie: false, stockMinimoDefault: 20000, createdAt: '2026-01-01T00:00:00Z', updatedAt: '2026-01-01T00:00:00Z', nombre: 'Cemento Portland Normal (CPN 40) - Granel', stockActual: 85000, stockMinimo: 20000, costoUnitario: 145 },
+  { id: 'art-arena', empresaId: 'emp-1', codigo: 'ARI-01', descripcion: 'Arena Fina de Río Lavada', categoriaId: 'cat-aridos', unidadMedidaBase: 'TN', estado: 'ACTIVO', controlaStock: true, controlaLote: false, controlaSerie: false, stockMinimoDefault: 300, createdAt: '2026-01-01T00:00:00Z', updatedAt: '2026-01-01T00:00:00Z', nombre: 'Arena Fina de Río Lavada', stockActual: 1240, stockMinimo: 300, costoUnitario: 12500 },
+  { id: 'art-piedra', empresaId: 'emp-1', codigo: 'ARI-02', descripcion: 'Piedra Partida 6-20 (Granitica)', categoriaId: 'cat-aridos', unidadMedidaBase: 'TN', estado: 'ACTIVO', controlaStock: true, controlaLote: false, controlaSerie: false, stockMinimoDefault: 400, createdAt: '2026-01-01T00:00:00Z', updatedAt: '2026-01-01T00:00:00Z', nombre: 'Piedra Partida 6-20 (Granitica)', stockActual: 1850, stockMinimo: 400, costoUnitario: 14200 },
+  { id: 'art-aditivo', empresaId: 'emp-1', codigo: 'ADI-01', descripcion: 'Aditivo Plastificante / Reductor de Agua', categoriaId: 'cat-aditivos', unidadMedidaBase: 'LITRO', estado: 'ACTIVO', controlaStock: true, controlaLote: true, controlaSerie: false, stockMinimoDefault: 800, createdAt: '2026-01-01T00:00:00Z', updatedAt: '2026-01-01T00:00:00Z', nombre: 'Aditivo Plastificante / Reductor de Agua', stockActual: 3200, stockMinimo: 800, costoUnitario: 890 },
+  { id: 'art-gasoil', empresaId: 'emp-1', codigo: 'COM-01', descripcion: 'Gasoil Grado 2 (YPF)', categoriaId: 'cat-lubricantes', unidadMedidaBase: 'LITRO', estado: 'ACTIVO', controlaStock: true, controlaLote: false, controlaSerie: false, stockMinimoDefault: 4000, createdAt: '2026-01-01T00:00:00Z', updatedAt: '2026-01-01T00:00:00Z', nombre: 'Gasoil Grado 2 (YPF)', stockActual: 15000, stockMinimo: 4000, costoUnitario: 1180 }
 ];
 
 export const mockClientes: Cliente[] = [

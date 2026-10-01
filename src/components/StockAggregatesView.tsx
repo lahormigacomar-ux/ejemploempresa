@@ -35,14 +35,14 @@ export const StockAggregatesView: React.FC<StockAggregatesViewProps> = ({ articu
               </thead>
               <tbody className="divide-y divide-slate-800 text-slate-300">
                 {articulos.map((art) => {
-                  const valorTotal = art.stockActual * art.costoUnitario;
+                  const valorTotal = (art.stockActual || 0) * (art.costoUnitario || 0);
                   return (
                     <tr key={art.id} className="hover:bg-slate-800/50">
                       <td className="p-3 font-mono font-bold text-amber-400">{art.codigo}</td>
-                      <td className="p-3 font-medium text-white">{art.nombre}</td>
-                      <td className="p-3 capitalize">{art.categoria.replace('_', ' ')}</td>
-                      <td className="p-3 font-semibold text-emerald-400">{art.stockActual.toLocaleString()} {art.unidadMedida}</td>
-                      <td className="p-3">${art.costoUnitario.toLocaleString()}</td>
+                      <td className="p-3 font-medium text-white">{art.nombre || art.descripcion}</td>
+                      <td className="p-3 capitalize">{String(art.categoriaId || 'general').replace('_', ' ')}</td>
+                      <td className="p-3 font-semibold text-emerald-400">{(art.stockActual || 0).toLocaleString()} {art.unidadMedidaBase}</td>
+                      <td className="p-3">${(art.costoUnitario || 0).toLocaleString()}</td>
                       <td className="p-3 font-bold text-white">${valorTotal.toLocaleString()}</td>
                     </tr>
                   );

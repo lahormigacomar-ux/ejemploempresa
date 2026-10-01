@@ -4,6 +4,7 @@ import { purchaseOrderRepository } from '../repositories/purchaseOrderRepository
 import { employeeRepository } from '../repositories/employeeRepository';
 import { tankRepository } from '../repositories/tankRepository';
 import { tankService } from './tankService';
+import { inventoryService } from './inventoryService';
 import { auditRepository } from '../repositories/auditRepository';
 
 export class PurchaseReceiptService {
@@ -215,6 +216,14 @@ export class PurchaseReceiptService {
 
     await purchaseReceiptRepository.save(receipt);
 
+    // Integración Módulo 6: Generar ingreso de stock convencional para artículos físicos
+    try {
+      await inventoryService.processReceiptStock(receipt, ord, params.usuarioId);
+    } catch (err) {
+      // Si falla inventario, propagar error
+      throw err;
+    }
+
     await auditRepository.recordAction(
       'comp_recepciones',
       receipt.id,
@@ -271,6 +280,13 @@ export class PurchaseReceiptService {
       if (item.ingresoCombustibleId) {
         await tankService.cancelIncome(item.ingresoCombustibleId, motivo, usuarioId);
       }
+    }
+
+    // Integración Módulo 6: Revertir stock convencional si se había ingresado
+    try {
+      await inventoryService.cancelReceiptStock(rec, motivo, usuarioId);
+    } catch (err) {
+      throw err;
     }
 
     const now = new Date().toISOString();

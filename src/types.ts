@@ -519,19 +519,285 @@ export interface EquipmentAvailabilityResult {
 }
 
 // ==========================================
-// OTROS MÓDULOS DEL ERP
+// MÓDULO 6: STOCK & DEPÓSITOS
 // ==========================================
-export interface Articulo {
+export type EstadoArticuloStock = 'ACTIVO' | 'INACTIVO' | 'BLOQUEADO';
+export type TipoDepositoStock = 'GENERAL' | 'REPUESTOS' | 'MATERIA_PRIMA' | 'HERRAMIENTAS' | 'EPP' | 'PRODUCTO_TERMINADO' | 'OTRO';
+export type EstadoDepositoStock = 'ACTIVO' | 'INACTIVO';
+export type EstadoUbicacionStock = 'ACTIVA' | 'INACTIVA';
+
+export interface CategoriaArticulo {
   id: string;
-  codigo: string;
+  empresaId: string;
+  codigo: string; // ej: REPUESTOS, NEUMATICOS, LUBRICANTES, FILTROS, EPP, HERRAMIENTAS, CEMENTO, ADITIVOS, ARIDOS
   nombre: string;
-  categoria: 'materia_prima' | 'repuesto' | 'combustible' | 'insumo' | 'producto_terminado' | 'premoldeado' | 'arido';
-  unidadMedida: 'kg' | 't' | 'lt' | 'm3' | 'u' | 'hs';
-  stockActual: number;
-  stockMinimo: number;
-  costoUnitario: number;
+  descripcion?: string;
+  activa: boolean;
 }
 
+export interface UnidadMedidaStock {
+  id: string;
+  codigo: string; // UNIDAD, KG, TN, LITRO, METRO, M2, M3, BOLSA, TAMBOR
+  nombre: string;
+  simbolo: string;
+  permiteDecimales: boolean;
+}
+
+export interface Articulo {
+  id: string;
+  empresaId: string;
+  codigo: string; // ej: ART-FILT-001
+  descripcion: string;
+  descripcionCorta?: string;
+  categoriaId: string;
+  subcategoriaId?: string;
+  unidadMedidaBase: string; // 'UNIDAD' | 'KG' | 'TN' | 'LITRO' | 'METRO' | 'BOLSA' | 'TAMBOR'
+  estado: EstadoArticuloStock;
+  controlaStock: boolean;
+  controlaLote: boolean;
+  controlaSerie: boolean;
+  stockMinimoDefault?: number;
+  stockMaximoDefault?: number;
+  puntoReposicionDefault?: number;
+  marca?: string;
+  modelo?: string;
+  codigoBarras?: string;
+  tipoCombustibleId?: string;
+  observaciones?: string;
+  createdAt: string;
+  updatedAt: string;
+
+  /** Compatibilidad Legacy */
+  nombre?: string;
+  categoria?: any;
+  unidadMedida?: any;
+  stockActual?: number;
+  stockMinimo?: number;
+  costoUnitario?: number;
+}
+
+export interface Deposito {
+  id: string;
+  empresaId: string;
+  codigo: string; // ej: DEP-CENTRAL, DEP-REPUESTOS, DEP-PLANTA2
+  nombre: string;
+  plantaId?: string;
+  tipo: TipoDepositoStock;
+  estado: EstadoDepositoStock;
+  permiteStockNegativo: boolean;
+  responsableEmpleadoId?: string;
+  direccion?: string;
+  observaciones?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface UbicacionDeposito {
+  id: string;
+  empresaId: string;
+  depositoId: string;
+  codigo: string; // ej: PAS-A-EST-03-N2
+  nombre: string;
+  pasillo?: string;
+  estante?: string;
+  nivel?: string;
+  estado: EstadoUbicacionStock;
+  observaciones?: string;
+}
+
+export interface ConfiguracionStockArticuloDeposito {
+  id: string;
+  empresaId: string;
+  articuloId: string;
+  depositoId: string;
+  stockMinimo: number;
+  stockMaximo?: number;
+  puntoReposicion?: number;
+  ubicacionPredeterminadaId?: string;
+}
+
+export interface StockExistencia {
+  id: string;
+  empresaId: string;
+  depositoId: string;
+  ubicacionId?: string;
+  articuloId: string;
+  loteId?: string;
+  cantidadFisica: number;
+  cantidadReservada: number;
+  cantidadDisponible: number;
+  costoPromedioPonderado: number;
+  valorTotalStock: number;
+  updatedAt: string;
+}
+
+export type TipoMovimientoStock =
+  | 'INGRESO_COMPRA'
+  | 'INGRESO_MANUAL'
+  | 'DEVOLUCION'
+  | 'TRANSFERENCIA'
+  | 'EGRESO_CONSUMO'
+  | 'EGRESO_MANUAL'
+  | 'AJUSTE_POSITIVO'
+  | 'AJUSTE_NEGATIVO'
+  | 'CONTEO_FISICO'
+  | 'PRODUCCION_CONSUMO'
+  | 'PRODUCCION_INGRESO'
+  | 'VENTA'
+  | 'DEVOLUCION_CLIENTE'
+  | 'REVERSION_RECEPCION_COMPRA';
+
+export type EstadoMovimientoStock = 'BORRADOR' | 'CONFIRMADO' | 'ANULADO';
+
+export interface MovimientoStockItem {
+  id: string;
+  movimientoId: string;
+  articuloId: string;
+  descripcionSnapshot: string;
+  unidadMedidaSnapshot: string;
+  cantidad: number;
+  depositoOrigenId?: string;
+  ubicacionOrigenId?: string;
+  depositoDestinoId?: string;
+  ubicacionDestinoId?: string;
+  loteId?: string;
+  codigoLoteSnapshot?: string;
+  serieId?: string;
+  numeroSerieSnapshot?: string;
+  costoUnitarioSnapshot: number;
+  costoTotalSnapshot: number;
+  centroCostoId?: string;
+  equipoId?: string;
+  ordenTrabajoId?: string;
+}
+
+export interface MovimientoStock {
+  id: string;
+  empresaId: string;
+  numero: string; // ej: MOV-000001
+  fechaHora: string;
+  tipoMovimiento: TipoMovimientoStock;
+  depositoOrigenId?: string;
+  depositoDestinoId?: string;
+  origenModulo: string;
+  origenId?: string;
+  documentoReferencia?: string;
+  estado: EstadoMovimientoStock;
+  items: MovimientoStockItem[];
+  observaciones?: string;
+  usuarioId?: string;
+  eventId?: string;
+  fechaAnulacion?: string;
+  usuarioAnulacion?: string;
+  motivoAnulacion?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ReservaStock {
+  id: string;
+  empresaId: string;
+  articuloId: string;
+  depositoId: string;
+  ubicacionId?: string;
+  cantidad: number;
+  origenModulo: string;
+  origenId: string;
+  estado: 'ACTIVA' | 'CONSUMIDA' | 'LIBERADA' | 'CANCELADA';
+  fechaReserva: string;
+  fechaVencimiento?: string;
+  usuarioId?: string;
+  motivo?: string;
+  movimientoConsumoId?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface LoteStock {
+  id: string;
+  empresaId: string;
+  articuloId: string;
+  codigoLote: string;
+  fechaFabricacion?: string;
+  fechaVencimiento?: string;
+  proveedorId?: string;
+  recepcionCompraId?: string;
+  estado: 'DISPONIBLE' | 'CUARENTENA' | 'VENCIDO' | 'AGOTADO';
+  observaciones?: string;
+  createdAt: string;
+}
+
+export interface SerieStock {
+  id: string;
+  empresaId: string;
+  articuloId: string;
+  numeroSerie: string;
+  estado: 'EN_STOCK' | 'RESERVADA' | 'ENTREGADA' | 'INSTALADA' | 'BAJA';
+  depositoId?: string;
+  ubicacionId?: string;
+  equipoInstaladoId?: string;
+  origenRecepcionId?: string;
+  observaciones?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ConteoStockItem {
+  id: string;
+  conteoId: string;
+  articuloId: string;
+  descripcionSnapshot: string;
+  unidadMedidaSnapshot: string;
+  ubicacionId?: string;
+  cantidadSistemaSnapshot: number;
+  cantidadContada: number;
+  diferencia: number;
+  costoUnitarioSnapshot: number;
+  valorDiferencia: number;
+}
+
+export interface ConteoStock {
+  id: string;
+  empresaId: string;
+  numero: string; // ej: CNT-000001
+  depositoId: string;
+  fechaHora: string;
+  estado: 'BORRADOR' | 'EN_PROCESO' | 'CERRADO' | 'ANULADO';
+  responsableEmpleadoId?: string;
+  observaciones?: string;
+  movimientoAjusteId?: string;
+  items: ConteoStockItem[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type TipoAlertaStock =
+  | 'STOCK_MINIMO'
+  | 'PUNTO_REPOSICION'
+  | 'LOTE_PROXIMO_VENCIMIENTO'
+  | 'LOTE_VENCIDO'
+  | 'DIFERENCIA_CONTEO'
+  | 'INTENTO_STOCK_NEGATIVO';
+
+export interface AlertaStock {
+  id: string;
+  empresaId: string;
+  tipo: TipoAlertaStock;
+  severidad: 'INFORMATIVA' | 'ADVERTENCIA' | 'BLOQUEANTE';
+  titulo: string;
+  descripcion: string;
+  articuloId?: string;
+  depositoId?: string;
+  loteId?: string;
+  fecha: string;
+  resuelta: boolean;
+  resueltaPor?: string;
+  fechaResolucion?: string;
+}
+
+// ==========================================
+// OTROS MÓDULOS DEL ERP
+// ==========================================
 export interface Cliente {
   id: string;
   razonSocial: string;
